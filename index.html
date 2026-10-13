@@ -411,7 +411,21 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
         <div class="report-hero-meta"><span class="report-meta-icon">✦</span><div><strong>Wall Decor Pro</strong><small>Founder dashboard</small></div></div>
         <div class="report-hero-orb report-orb-one"></div><div class="report-hero-orb report-orb-two"></div>
       </div>
-      <div class="report-section-intro"><div><span class="report-kicker">YOUR BUSINESS AT A GLANCE</span><h2>Key numbers</h2></div><span class="report-period-pill">● Current synced data</span></div>
+      <div class="sec" id="reportFiltersSec">
+        <div class="sec-hd"><div class="sec-title">🗓️ Report Filters</div><span style="font-size:11px;color:#6b7280">Founder can review every salesperson and all leads by period</span></div>
+        <div class="sbar" style="align-items:flex-end">
+          <div class="fg"><label for="repPeriodMode">Report Period</label><select id="repPeriodMode" onchange="updateReportPeriodFields();renderRep()" style="min-width:150px"><option value="all">All Time</option><option value="date">Specific Date</option><option value="range">Start Date → End Date</option><option value="month">Month</option><option value="year">Year</option></select></div>
+          <div class="fg" id="repDateField" style="display:none"><label for="repDate">Date</label><input type="date" id="repDate" onchange="renderRep()"></div>
+          <div class="fg" id="repMonthField" style="display:none"><label for="repMonth">Month</label><input type="month" id="repMonth" onchange="renderRep()"></div>
+          <div class="fg" id="repYearField" style="display:none"><label for="repYear">Year</label><select id="repYear" onchange="renderRep()" style="min-width:100px"><option value="">Select year</option></select></div>
+          <div class="fg" id="repFromField" style="display:none"><label for="repFrom">From</label><input type="date" id="repFrom" onchange="renderRep()"></div>
+          <div class="fg" id="repToField" style="display:none"><label for="repTo">To</label><input type="date" id="repTo" onchange="renderRep()"></div>
+          <div class="fg"><label for="repSalesperson">Salesperson</label><select id="repSalesperson" onchange="renderRep()" style="min-width:150px"><option value="">All Salespersons</option></select></div>
+          <button class="btn bo bsm" onclick="resetReportFilters()">Reset Filters</button>
+        </div>
+        <div id="repFilterSummary" style="padding:0 16px 12px;font-size:11px;color:#64748b">Showing all synced leads across all salespeople.</div><div id="repFilterHint" style="padding:0 16px 12px;font-size:11px;color:#64748b">Date filters use each lead’s creation date. For a range, choose a start date and/or an end date; both endpoints are included.</div>
+      </div>
+      <div class="report-section-intro"><div><span class="report-kicker">YOUR BUSINESS AT A GLANCE</span><h2>Key numbers</h2></div><span class="report-period-pill" id="repPeriodPill">● All synced data</span></div>
       <div class="cards report-cards" id="repCards"></div>
       <div class="report-visuals" id="repVisuals"></div>
       <div class="sec">
@@ -460,7 +474,7 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
       </div>
       <div class="sec">
         <div class="sec-hd"><div class="sec-title">📋 Won Deals in Period</div></div>
-        <div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Client</th><th>Salesperson</th><th>Product Sale</th><th>Transport</th><th>Installation</th><th>Disc+Loss ➖</th><th>Net Sales ✅</th><th>Total Sales (Grand Total)</th><th>Total Payments Received</th><th>Balance Due</th></tr></thead><tbody id="salesTb"></tbody></table></div>
+        <div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Client</th><th>Salesperson</th><th>Product Sale</th><th>Transport</th><th>Installation</th><th>Disc+Loss ➖</th><th>Net Sales ✅</th><th>Total Sales (Grand Total)</th><th>Advance Payment Received</th><th>Total Payments Received</th><th>Balance Due</th></tr></thead><tbody id="salesTb"></tbody></table></div>
       </div>
     </div>
 
@@ -497,7 +511,7 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
         </div>
       </div>
       <div class="sec" id="wonMissingOrderSec">
-        <div class="sec-hd"><div class="sec-title">⚠️ Won Leads Without a Sales Order</div><div style="font-size:11px;color:#6b7280">A Won status does not create an order record by itself.</div></div>
+        <div class="sec-hd"><div class="sec-title">⚠️ Won Leads — Sales Order Actions</div><div style="font-size:11px;color:#6b7280">Open an existing sales order to edit payments, or create one if the lead has no order.</div></div>
         <div class="tw"><table><thead><tr><th>Client</th><th>Phone</th><th>Products</th><th>Assigned To</th><th>Lead Date</th><th>Action</th></tr></thead><tbody id="wonMissingOrderTb"></tbody></table></div>
       </div>
     </div>
@@ -1168,26 +1182,40 @@ function renderMySales() {
   var rows = [];
   // Source 1: Sales Orders
   orders.forEach(function(o){
-    if (person && o.salesperson !== person) return;
-    if (fromDate && o.date) { var d=new Date(o.date); if(d<fromDate || (toDate && d>=toDate)) return; }
+    /* Older CRM builds stored the salesperson under different field names/casing.
+       Normalize these before filtering so synced orders are not silently hidden. */
+    var orderPerson = String(
+      o.salesperson || o.salesPerson || o.salespersonName || o.assignedTo ||
+      o.assigned || o.createdBy || o.createdByName || ''
+    ).trim();
+    if (person && orderPerson.toLocaleLowerCase() !== String(person).trim().toLocaleLowerCase()) return;
+    var orderDate = o.date || o.orderDate || o.createdAt || o.timestamp || '';
+    if (fromDate && orderDate) {
+      var d = new Date(orderDate);
+      if (!isNaN(d.getTime()) && (d < fromDate || (toDate && d >= toDate))) return;
+    }
     var subtotal = o.subtotal || 0;
     var disc = (o.discount||0) + (o.extraDisc||0);
     var transport = o.transport || 0;
     var install = o.install || 0;
     var loss = o.loss || 0;
-    var adv = o.advTotal || 0;
-    var bal = o.balance || 0;
+    var adv = Number(o.advTotal) || 0;
+    var bal = Number(o.balance) || 0;
+    var grandTotal = Number(o.grandTotal) || 0;
+    var regularReceived = typeof window.wdpRegularPaymentTotal === 'function'
+      ? Number(window.wdpRegularPaymentTotal(o)) || 0
+      : Number(o.totalPaymentsReceived) || 0;
     // Net Sale = Product Sale - Discount - Loss (transport & install NOT deducted)
-    var netSale = o.netSale || (subtotal - disc - loss);
-    rows.push({ id:o.id, leadId:o.leadId, date:o.date, client:o.custName, salesperson:o.salesperson,
+    var netSale = o.netSale != null ? Number(o.netSale) : (subtotal - disc - loss);
+    rows.push({ id:o.id || o.orderId, leadId:o.leadId, date:orderDate, client:o.custName || o.customerName || o.clientName || o.customer, salesperson:orderPerson,
       saleAmt:subtotal, transport:transport, inst:install, disc:disc, loss:loss,
-      netSale:netSale, adv:adv, bal:bal, src:'Order' });
+      netSale:netSale, grandTotal:grandTotal, adv:adv, received:regularReceived, bal:bal, src:'Order' });
   });
   // Orders are the single financial source. Legacy lead payment records are migrated at startup.
-  var totSale=0,totTransport=0,totInst=0,totDisc=0,totLoss=0,totAdv=0,totNet=0,totBal=0;
+  var totSale=0,totTransport=0,totInst=0,totDisc=0,totLoss=0,totAdv=0,totReceived=0,totGrand=0,totNet=0,totBal=0;
   rows.forEach(function(r){
     totSale+=r.saleAmt; totTransport+=(r.transport||0); totInst+=r.inst;
-    totDisc+=r.disc; totLoss+=r.loss; totAdv+=r.adv; totNet+=r.netSale; totBal+=r.bal;
+    totDisc+=r.disc; totLoss+=r.loss; totAdv+=r.adv; totReceived+=r.received; totGrand+=r.grandTotal; totNet+=r.netSale; totBal+=r.bal;
   });
   document.getElementById('salesCards').innerHTML =
     '<div class="card"><div class="lbl">Won Deals</div><div class="val navy">'+rows.length+'</div></div>'+
@@ -1196,7 +1224,9 @@ function renderMySales() {
     '<div class="card"><div class="lbl">Installation (info)</div><div class="val gold">'+fmt(totInst)+'</div></div>'+
     '<div class="card"><div class="lbl">Discount+Loss ➖</div><div class="val red">'+fmt(totDisc+totLoss)+'</div></div>'+
     '<div class="card" style="border:2px solid #16a34a"><div class="lbl">Net Sales (Incentive Base)</div><div class="val green">'+fmt(totNet)+'</div></div>'+
+    '<div class="card"><div class="lbl">Total Sales (Grand Total)</div><div class="val navy">'+fmt(totGrand)+'</div></div>'+
     '<div class="card"><div class="lbl">Advance Received</div><div class="val green">'+fmt(totAdv)+'</div></div>'+
+    '<div class="card"><div class="lbl">Total Payments Received</div><div class="val green">'+fmt(totReceived)+'</div></div>'+
     '<div class="card"><div class="lbl">Balance Due</div><div class="val red">'+fmt(totBal)+'</div></div>';
   document.getElementById('salesTb').innerHTML = rows.length ? rows.map(function(r,i){
     var clickFn = r.src==='Order' && r.id ? "openOrder('"+r.id+"')" : "viewLead('"+r.leadId+"')";
@@ -1210,10 +1240,12 @@ function renderMySales() {
       '<td style="color:#dc2626">'+fmt(r.inst)+'</td>'+
       '<td style="color:#dc2626">'+fmt(r.disc+r.loss)+'</td>'+
       '<td style="font-weight:700;color:#16a34a;border:2px solid #16a34a;border-radius:4px;padding:4px 8px">'+fmt(r.netSale)+'</td>'+
+      '<td style="font-weight:700;color:#0B1425">'+fmt(r.grandTotal)+'</td>'+
       '<td style="color:#C9A84C">'+fmt(r.adv)+'</td>'+
-      '<td style="color:#f87171">'+fmt(r.bal)+'</td>'+
+      '<td style="color:#16a34a;font-weight:700">'+fmt(r.received)+'</td>'+
+      '<td style="color:#f87171;font-weight:700">'+fmt(r.bal)+'</td>'+
       '</tr>';
-  }).join('') : '<tr><td colspan="11" style="text-align:center;padding:20px;color:#6b7280">No won deals in this period.</td></tr>';
+  }).join('') : '<tr><td colspan="13" style="text-align:center;padding:20px;color:#6b7280">No won deals in this period.</td></tr>';
 }
 
 // ===== RENDER ALL =====
@@ -1318,18 +1350,109 @@ function renderFU() {
   }).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;color:#16a34a">✅ No follow-ups pending!</td></tr>';
 }
 
+function updateReportPeriodFields() {
+  var mode=(document.getElementById('repPeriodMode')||{}).value||'all';
+  [['repDateField','date'],['repMonthField','month'],['repYearField','year'],['repFromField','range'],['repToField','range']].forEach(function(pair){
+    var el=document.getElementById(pair[0]); if(el)el.style.display=mode===pair[1]?'':'none';
+  });
+  var ys=document.getElementById('repYear');
+  if(ys){
+    var old=ys.value, years={};
+    (leads||[]).forEach(function(l){
+      var d=reportISODate(l && (l.date || l.createdAt || l.created_at || l.created || l.timestamp));
+      if(d)years[d.slice(0,4)]=1;
+    });
+    years[String(new Date().getFullYear())]=1;
+    ys.innerHTML='<option value="">Select year</option>'+Object.keys(years).sort().reverse().map(function(y){return '<option value="'+y+'">'+y+'</option>';}).join('');
+    if(years[old])ys.value=old;
+  }
+  var ps=document.getElementById('repSalesperson');
+  if(ps){
+    var prev=ps.value;
+    ps.innerHTML='<option value="">All Salespersons</option>'+(team.members||[]).map(function(m){return '<option value="'+esc(m.name)+'">'+esc(m.name)+'</option>';}).join('');
+    if((team.members||[]).some(function(m){return m.name===prev;}))ps.value=prev;
+  }
+}
+function resetReportFilters(){
+  ['repPeriodMode','repDate','repMonth','repYear','repFrom','repTo','repSalesperson'].forEach(function(id){var e=document.getElementById(id);if(e)e.value=id==='repPeriodMode'?'all':'';});
+  updateReportPeriodFields();renderRep();
+}
+function reportISODate(value){
+  if(value===null||value===undefined||value==='')return '';
+  if(value instanceof Date&&!isNaN(value.getTime()))return value.getFullYear()+'-'+String(value.getMonth()+1).padStart(2,'0')+'-'+String(value.getDate()).padStart(2,'0');
+  if(typeof value==='number'&&isFinite(value)){
+    // Google Sheets/Excel serial dates and Unix timestamps (seconds or ms).
+    if(value>20000&&value<90000){var excelDate=new Date(Date.UTC(1899,11,30)+Math.floor(value)*86400000);return excelDate.toISOString().slice(0,10);}
+    if(value>1000000000000){var msDate=new Date(value);if(!isNaN(msDate.getTime()))return msDate.getFullYear()+'-'+String(msDate.getMonth()+1).padStart(2,'0')+'-'+String(msDate.getDate()).padStart(2,'0');}
+    if(value>1000000000&&value<1000000000000){var secDate=new Date(value*1000);if(!isNaN(secDate.getTime()))return secDate.getFullYear()+'-'+String(secDate.getMonth()+1).padStart(2,'0')+'-'+String(secDate.getDate()).padStart(2,'0');}
+  }
+  var raw=String(value).trim();
+  if(!raw)return '';
+  // ISO dates/timestamps; keep the written calendar date to avoid timezone shifts.
+  var m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|[T\s])/);
+  if(m){var y=+m[1],mo=+m[2],d=+m[3];var dt=new Date(Date.UTC(y,mo-1,d));return dt.getUTCFullYear()===y&&dt.getUTCMonth()===mo-1&&dt.getUTCDate()===d?y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'):'';}
+  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY and matching year-first variants.
+  m=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if(m){var d2=+m[1],mo2=+m[2],y2=+m[3];var dt2=new Date(Date.UTC(y2,mo2-1,d2));return dt2.getUTCFullYear()===y2&&dt2.getUTCMonth()===mo2-1&&dt2.getUTCDate()===d2?y2+'-'+String(mo2).padStart(2,'0')+'-'+String(d2).padStart(2,'0'):'';}
+  m=raw.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+  if(m){var y3=+m[1],mo3=+m[2],d3=+m[3];var dt3=new Date(Date.UTC(y3,mo3-1,d3));return dt3.getUTCFullYear()===y3&&dt3.getUTCMonth()===mo3-1&&dt3.getUTCDate()===d3?y3+'-'+String(mo3).padStart(2,'0')+'-'+String(d3).padStart(2,'0'):'';}
+  // Common dates with month names (for legacy imports).
+  var parsed=new Date(raw);
+  if(!isNaN(parsed.getTime())&&/[A-Za-z]/.test(raw))return parsed.getFullYear()+'-'+String(parsed.getMonth()+1).padStart(2,'0')+'-'+String(parsed.getDate()).padStart(2,'0');
+  // Spreadsheet serial date values sometimes arrive as strings.
+  if(/^\d{5}(?:\.\d+)?$/.test(raw)){var serial=Number(raw);if(serial>20000&&serial<90000){var base=new Date(Date.UTC(1899,11,30)+Math.floor(serial)*86400000);return base.toISOString().slice(0,10);}}
+  return '';
+}
+function getReportFilteredLeads(){
+  var mode=(document.getElementById('repPeriodMode')||{}).value||'all';
+  var date=(document.getElementById('repDate')||{}).value||'';
+  var month=(document.getElementById('repMonth')||{}).value||'';
+  var year=(document.getElementById('repYear')||{}).value||'';
+  var from=(document.getElementById('repFrom')||{}).value||'';
+  var to=(document.getElementById('repTo')||{}).value||'';
+  var person=(document.getElementById('repSalesperson')||{}).value||'';
+  var normName=function(v){return String(v==null?'':v).trim().toLocaleLowerCase();};
+  return (Array.isArray(leads)?leads:[]).filter(function(l){
+    if(!l)return false;
+    var rawDate=l.date || l.createdAt || l.created_at || l.created || l.timestamp || l.leadDate || '';
+    var d=reportISODate(rawDate);
+    if(mode==='date'&&(!date||!d||d!==date))return false;
+    if(mode==='month'&&(!month||!d||d.slice(0,7)!==month))return false;
+    if(mode==='year'&&(!year||!d||d.slice(0,4)!==year))return false;
+    if(mode==='range'){
+      if(!from&&!to)return false;
+      if(!d)return false;
+      if(from&&d<from)return false;
+      if(to&&d>to)return false;
+    }
+    var assigned=normName(l.assignedTo || l.assigned || l.salesperson || l.salesPerson || l.owner || '');
+    if(person&&assigned!==normName(person))return false;
+    return true;
+  });
+}
 function renderRep() {
-  var t=tod();
-  document.getElementById('repCards').innerHTML=[{l:'Total Leads',v:leads.length,c:'navy'},{l:'B2B',v:leads.filter(function(l){return l.segment==='B2B';}).length,c:'purple'},{l:'B2C',v:leads.filter(function(l){return l.segment==='B2C';}).length,c:'blue'},{l:'Won',v:leads.filter(function(l){return l.status==='Won';}).length,c:'green'}].map(function(c){return '<div class="card"><div class="lbl">'+c.l+'</div><div class="val '+c.c+'">'+c.v+'</div></div>';}).join('');
-  document.getElementById('repTb').innerHTML=team.members.map(function(m){var sl=leads.filter(function(l){return l.assignedTo===m.name;});return '<tr><td><strong>'+esc(m.name)+'</strong></td><td>'+sl.length+'</td><td>'+sl.filter(function(l){return l.segment==='B2B';}).length+'</td><td>'+sl.filter(function(l){return l.segment==='B2C';}).length+'</td><td style="color:#16a34a;font-weight:700">'+sl.filter(function(l){return l.status==='Won';}).length+'</td><td style="color:#dc2626">'+sl.filter(function(l){return l.status==='Lost';}).length+'</td><td>'+sl.filter(function(l){return isActive(l);}).length+'</td><td style="color:#d97706;font-weight:700">'+sl.filter(function(l){return l.followupDate===t&&isActive(l);}).length+'</td></tr>';}).join('');
+  updateReportPeriodFields();
+  var t=tod(), reportLeads=getReportFilteredLeads();
+  var mode=(document.getElementById('repPeriodMode')||{}).value||'all';
+  var person=(document.getElementById('repSalesperson')||{}).value||'';
+  var periodLabel=mode==='date'?((document.getElementById('repDate')||{}).value||'Select a date'):mode==='month'?((document.getElementById('repMonth')||{}).value||'Select a month'):mode==='year'?((document.getElementById('repYear')||{}).value||'Select a year'):mode==='range'?(((document.getElementById('repFrom')||{}).value||'Beginning')+' → '+((document.getElementById('repTo')||{}).value||'Today')):'All Time';
+  var pill=document.getElementById('repPeriodPill');if(pill)pill.textContent='● '+periodLabel+(person?' · '+person:'');
+  var summary=document.getElementById('repFilterSummary');
+  if(summary){
+    var fromVal=(document.getElementById('repFrom')||{}).value||'',toVal=(document.getElementById('repTo')||{}).value||'';
+    summary.textContent=(mode==='range'&&fromVal&&toVal&&fromVal>toVal?'⚠ Start date must be on or before the end date. ':'Showing '+reportLeads.length+' lead(s) · '+(person?person:'all salespeople')+' · '+periodLabel+'. Metrics use lead creation dates.');
+  }
+  document.getElementById('repCards').innerHTML=[{l:'Total Leads',v:reportLeads.length,c:'navy'},{l:'B2B',v:reportLeads.filter(function(l){return l.segment==='B2B';}).length,c:'purple'},{l:'B2C',v:reportLeads.filter(function(l){return l.segment==='B2C';}).length,c:'blue'},{l:'Won',v:reportLeads.filter(function(l){return l.status==='Won';}).length,c:'green'}].map(function(c){return '<div class="card"><div class="lbl">'+c.l+'</div><div class="val '+c.c+'">'+c.v+'</div></div>';}).join('');
+  var visibleMembers=person?(team.members||[]).filter(function(m){return m.name===person;}):(team.members||[]);
+  document.getElementById('repTb').innerHTML=visibleMembers.map(function(m){var sl=reportLeads.filter(function(l){return l.assignedTo===m.name;});return '<tr><td><strong>'+esc(m.name)+'</strong></td><td>'+sl.length+'</td><td>'+sl.filter(function(l){return l.segment==='B2B';}).length+'</td><td>'+sl.filter(function(l){return l.segment==='B2C';}).length+'</td><td style="color:#16a34a;font-weight:700">'+sl.filter(function(l){return l.status==='Won';}).length+'</td><td style="color:#dc2626">'+sl.filter(function(l){return l.status==='Lost';}).length+'</td><td>'+sl.filter(function(l){return isActive(l);}).length+'</td><td style="color:#d97706;font-weight:700">'+sl.filter(function(l){return l.followupDate===t&&isActive(l);}).length+'</td></tr>';}).join('')||'<tr><td colspan="8" style="text-align:center;padding:18px;color:#6b7280">No salesperson data for this filter.</td></tr>';
   var sec=document.getElementById('globalLeadsSec'); if(sec) sec.style.display=curRole==='founder'?'':'none';
   if(curRole!=='founder'){document.getElementById('allTb').innerHTML='';return;}
-  var q=((document.getElementById('allQ')||{}).value||'').toLowerCase(), pe=document.getElementById('allPerson'), person=pe?pe.value:'';
-  if(pe){var cur=person;pe.innerHTML='<option value="">All Salespersons</option>'+team.members.map(function(m){return '<option value="'+esc(m.name)+'"'+(m.name===cur?' selected':'')+'>'+esc(m.name)+'</option>';}).join('');person=pe.value;}
-  var data=leads.slice(); if(person)data=data.filter(function(l){return l.assignedTo===person;});
+  var q=((document.getElementById('allQ')||{}).value||'').toLowerCase(), pe=document.getElementById('allPerson'), globalPerson=pe?pe.value:'';
+  if(pe){var cur=globalPerson;pe.innerHTML='<option value="">All Salespersons</option>'+team.members.map(function(m){return '<option value="'+esc(m.name)+'"'+(m.name===cur?' selected':'')+'>'+esc(m.name)+'</option>';}).join('');globalPerson=pe.value;}
+  var data=reportLeads.slice(); if(globalPerson)data=data.filter(function(l){return l.assignedTo===globalPerson;});
   if(q)data=data.filter(function(l){return [l.client,l.contact,l.area,l.assignedTo,pText(l.product),l.segment,l.status].some(function(v){return String(v||'').toLowerCase().includes(q);});});
   data.sort(function(a,b){return new Date(b.date)-new Date(a.date);});
-  document.getElementById('allTb').innerHTML=data.length?data.map(function(l,i){return '<tr class="click-row" onclick="viewLead(\''+l.id+'\')"><td>'+(i+1)+'</td><td>'+fmtDate(l.date)+'</td><td>'+rowClient(l)+'</td><td>'+esc(l.contact||'—')+'</td><td><span class="badge '+(l.segment==='B2B'?'bb2b':'bb2c')+'">'+esc(l.segment)+'</span></td><td>'+pSum(l.product)+'</td><td>'+esc(l.area||'—')+'</td><td><strong>'+esc(l.assignedTo)+'</strong></td><td>'+sbadge(l.status)+'</td><td>'+fuLbl(l.followupDate,l.status)+'</td><td onclick="event.stopPropagation()">'+aBtns(l.id)+'</td></tr>';}).join(''):'<tr><td colspan="11" style="text-align:center;padding:24px;color:#6b7280">No leads found.</td></tr>';
+  document.getElementById('allTb').innerHTML=data.length?data.map(function(l,i){return '<tr class="click-row" onclick="viewLead(\''+l.id+'\')"><td>'+(i+1)+'</td><td>'+fmtDate(l.date)+'</td><td>'+rowClient(l)+'</td><td>'+esc(l.contact||'—')+'</td><td><span class="badge '+(l.segment==='B2B'?'bb2b':'bb2c')+'">'+esc(l.segment)+'</span></td><td>'+pSum(l.product)+'</td><td>'+esc(l.area||'—')+'</td><td><strong>'+esc(l.assignedTo)+'</strong></td><td>'+sbadge(l.status)+'</td><td>'+fuLbl(l.followupDate,l.status)+'</td><td onclick="event.stopPropagation()">'+aBtns(l.id)+'</td></tr>';}).join(''):'<tr><td colspan="11" style="text-align:center;padding:24px;color:#6b7280">No leads found for the selected report filters.</td></tr>';
 }
 function renderTeam() {
   document.getElementById('teamTb').innerHTML = team.members.length ? team.members.map(function(m,i){
@@ -1872,11 +1995,22 @@ var ordPmts = [];
 function openOrder(ordId) {
   var o = orders.find(function(x){ return x.id===ordId; });
   if (!o) return;
-  if(curRole==='sales'&&o.salesperson!==curUser)return;
+  if(curRole==='sales'&&String(o.salesperson||'').trim().toLowerCase()!==String(curUser||'').trim().toLowerCase())return;
   curOrderId = o.id;
   curOrderLeadId = o.leadId || null;
   ordProds = JSON.parse(JSON.stringify(o.products||[]));
-  ordPmts = JSON.parse(JSON.stringify(o.payments||[]));
+  var savedPayments = Array.isArray(o.payments)&&o.payments.length ? o.payments : (Array.isArray(o.paymentRecords)&&o.paymentRecords.length ? o.paymentRecords : (Array.isArray(o.transactions)&&o.transactions.length ? o.transactions : (Array.isArray(o.paymentHistory)&&o.paymentHistory.length ? o.paymentHistory : [])));
+  ordPmts = JSON.parse(JSON.stringify(savedPayments)).map(function(p){
+    p = p && typeof p === 'object' ? p : {};
+    var raw = p.amt;
+    if(raw==null||raw==='')raw=p.amount;
+    if(raw==null||raw==='')raw=p.amountReceived;
+    if(raw==null||raw==='')raw=p.paymentAmount;
+    p.amt = window.wdpParseMoney(raw);
+    p.type = String(p.type||p.transactionType||'payment').toLowerCase()==='refund' ? 'refund' : 'payment';
+    if(p.date)p.date = (typeof window.v6DateOnly==='function'?window.v6DateOnly(p.date):p.date);
+    return p;
+  });
   document.getElementById('orderId').textContent = o.id;
   document.getElementById('orderClient2').textContent = o.custName + ' — ' + (o.phone||'');
   document.getElementById('ordCustName').value = o.custName||'';
@@ -1990,9 +2124,17 @@ function calcOrdTotal() {
   var grand = subtotal + transport + install - disc - extraDisc - loss;
   // Net Sale (incentive base) = Product Sale - Discount - Loss only
   var netSale = subtotal - disc - extraDisc - loss;
-  var grossReceived = ordPmts.reduce(function(s,p){ var a=Math.max(0,Number(p&&p.amt||0)); return s + (p&&p.type==='refund' ? -a : a); }, 0);
-  var advTotal = Math.max(0, grossReceived);
-  var bal = Math.max(0, grand - advTotal);
+  var ledger={advance:0,regular:0,refunds:0};
+  ordPmts.forEach(function(p){
+    var a=Math.max(0,window.wdpParseMoney(p&&(p.amt!=null?p.amt:(p.amount!=null?p.amount:p.amountReceived))));
+    if(!a)return;
+    if(String(p.type||p.transactionType||'payment').toLowerCase()==='refund'){ledger.refunds+=a;return;}
+    if(String(p.kind||'').toLowerCase()==='advance'||/\badvance\b/i.test(String(p.ref||p.description||p.paymentType||'')))ledger.advance+=a;
+    else ledger.regular+=a;
+  });
+  var advTotal=Math.max(0,ledger.advance);
+  var regularPaid=Math.max(0,ledger.regular-ledger.refunds);
+  var bal=Math.max(0,grand-advTotal-regularPaid);
   var fmt = function(n){ return 'Rs. '+(n||0).toLocaleString('en-IN'); };
   setEl('ordSubtotal', fmt(subtotal));
   setEl('ordDiscount', fmt(disc+extraDisc));
@@ -2004,9 +2146,17 @@ function calcOrdTotal() {
   setEl('ordNetSale', fmt(netSale));
 }
 
+window.wdpParseMoney = function(raw){
+  if(raw==null||raw==='')return 0;
+  if(typeof raw==='number')return Number.isFinite(raw)?raw:0;
+  var cleaned=String(raw).trim().replace(/[₹,\s]/g,'').replace(/^rs\.?/i,'');
+  var n=Number(cleaned);
+  return Number.isFinite(n)?n:0;
+};
 function renderOrdPmts() {
   var readonly = isReadOnly();
   var tb = document.getElementById('ordPayTb');
+  ordPmts=(Array.isArray(ordPmts)?ordPmts:[]).map(function(p){p=p&&typeof p==='object'?p:{};var raw=p.amt;if(raw==null||raw==='')raw=p.amount;if(raw==null||raw==='')raw=p.amountReceived;if(raw==null||raw==='')raw=p.paymentAmount;p.amt=window.wdpParseMoney(raw);p.type=String(p.type||p.transactionType||'payment').toLowerCase()==='refund'?'refund':'payment';return p;});
   if (!ordPmts.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:12px;color:#6b7280">No payments yet</td></tr>'; calcOrdTotal(); return; }
   tb.innerHTML = ordPmts.map(function(p,i){
     var isRef = p.type==='refund';
@@ -2046,7 +2196,7 @@ function addOrdPayment(){
   if(!isFinite(amt)||amt<=0){alert('Payment/refund amount must be greater than zero.');return;}if(!validDateString(date)){alert('Please enter a valid payment date.');return;}
   var subtotal=0,disc=0;ordProds.forEach(function(p){subtotal+=Number(p.qty||0)*Number(p.rate||0);disc+=Number(p.disc||0);});
   var grand=subtotal+Number(document.getElementById('ordTransport').value||0)+Number(document.getElementById('ordInstall').value||0)-disc-Number(document.getElementById('ordExtraDisc').value||0)-Number(document.getElementById('ordLoss').value||0);
-  var received=ordPmts.reduce(function(a,p){return a+(p.type==='refund'?0:Number(p.amt||0));},0),refunded=ordPmts.reduce(function(a,p){return a+(p.type==='refund'?Number(p.amt||0):0);},0);
+  var received=ordPmts.reduce(function(a,p){var raw=p&&p.amt;if(raw==null||raw==='')raw=p&&p.amount;return a+(String(p&&p.type||'payment').toLowerCase()==='refund'?0:Math.max(0,Number(raw)||0));},0),refunded=ordPmts.reduce(function(a,p){var raw=p&&p.amt;if(raw==null||raw==='')raw=p&&p.amount;return a+(String(p&&p.type||'payment').toLowerCase()==='refund'?Math.max(0,Number(raw)||0):0);},0);
   if(type==='payment'&&received+amt>grand+.005){alert('Payment exceeds the remaining amount due.');return;}if(type==='refund'&&refunded+amt>received+.005){alert('Refund exceeds the amount actually received.');return;}
   var f=document.getElementById('pmtImg').files[0],entry={id:uid(),date:date,amt:amt,mode:document.getElementById('pmtMode').value,ref:document.getElementById('pmtRef').value.trim(),type:type,img:null,createdAt:new Date().toISOString(),createdBy:curUser};
   function finish(){ordPmts.push(entry);renderOrdPmts();document.getElementById('pmtAmt').value='';document.getElementById('pmtRef').value='';document.getElementById('pmtImg').value='';}
@@ -2097,7 +2247,7 @@ function renderOrders() {
   var payF = document.getElementById('ordPayStatus') ? document.getElementById('ordPayStatus').value : '';
   var now = new Date(), t = tod();
   var data = orders.filter(function(o){
-    if (curRole === 'sales' && o.salesperson !== curUser) return false;
+    if (curRole === 'sales' && String(o.salesperson||'').trim().toLowerCase() !== String(curUser||'').trim().toLowerCase()) return false;
     if (person && o.salesperson !== person) return false;
     if (payF && o.payStatus !== payF) return false;
     if (filter === 'today' && o.date !== t) return false;
@@ -2106,7 +2256,7 @@ function renderOrders() {
     return true;
   });
   var totGrand=0, totAdv=0, totBal=0;
-  data.forEach(function(o){ totGrand+=o.grandTotal||0; totAdv+=o.advTotal||0; totBal+=o.balance||0; });
+  data.forEach(function(o){ totGrand+=Number(o.grandTotal)||0; totAdv+=(Number(o.advTotal)||0)+(typeof window.wdpRegularPaymentTotal==='function'?window.wdpRegularPaymentTotal(o):(Number(o.totalPaymentsReceived)||0)); totBal+=Number(o.balance)||0; });
   var fmt = function(n){ return 'Rs. '+(n||0).toLocaleString('en-IN'); };
   var cardsEl = document.getElementById('ordCards');
   if (cardsEl) cardsEl.innerHTML =
@@ -2128,7 +2278,7 @@ function renderOrders() {
       '<td>'+esc(o.salesperson)+'</td>'+
       '<td style="color:#16a34a;font-weight:700">'+fmt(o.netSale||0)+'</td>'+
       '<td>'+fmt(o.grandTotal)+'</td>'+
-      '<td style="color:#C9A84C">'+fmt(o.advTotal)+'</td>'+
+      '<td style="color:#C9A84C">'+fmt(typeof window.wdpRegularPaymentTotal==='function'?window.wdpRegularPaymentTotal(o):0)+'</td>'+
       '<td style="color:'+(o.balance>0?'#dc2626':'#16a34a')+';font-weight:700">'+fmt(o.balance)+'</td>'+
       '<td style="background:'+(payColor[o.payStatus]||'#f1f5f9')+';padding:4px 8px;border-radius:6px">'+(payText[o.payStatus]||o.payStatus)+'</td>'+
       '<td style="font-size:11px;color:#6b7280">'+esc(o.dispStatus)+'</td>'+
@@ -2557,7 +2707,7 @@ window.addEventListener('online',function(){processSyncQueue();});
           return;
         }else{
           var retry=v6Outbox(),ri=retry.findIndex(function(x){return x.opId===op.opId;});
-          if(ri>-1){retry[ri].attempts=Number(retry[ri].attempts||0)+1;retry[ri].lastError=String(e.message||'Sync failed');retry[ri].nextAttemptAt=Date.now()+Math.min(60000,1000*Math.pow(2,Math.min(retry[ri].attempts,6)));v6SaveOutbox(retry);}
+          if(ri>-1){retry[ri].attempts=Number(retry[ri].attempts||0)+1;retry[ri].lastError=String(e.message||'Sync failed');retry[ri].lastCode=String(e.code||'');retry[ri].nextAttemptAt=Date.now()+Math.min(60000,1000*Math.pow(2,Math.min(retry[ri].attempts,6)));v6SaveOutbox(retry);}
           console.error('CRM sync operation failed; retained for retry',op.entity,op.id,e);
           v6UpdateSyncUI(navigator.onLine?'error':'offline');
         }
@@ -2614,6 +2764,9 @@ window.addEventListener('online',function(){processSyncQueue();});
     }
     return x;
   }
+  // The order editor is defined outside this IIFE and calls the helper directly.
+  // Expose the same helper instead of duplicating date conversion logic.
+  window.v6DateOnly = v6DateOnly;
   window.tod=function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
   window.toInputDate=function(d){return v6DateOnly(d)||tod();};
   window.fuLbl=function(d){d=v6DateOnly(d);if(!d)return '<span style="color:#ccc">—</span>';var t=tod();if(d<t)return '<span class="fu-over">⚠️ Overdue</span>';if(d===t)return '<span class="fu-today">🔴 TODAY</span>';var diff=Math.ceil((new Date(d+'T00:00:00')-new Date(t+'T00:00:00'))/86400000);if(diff<=3)return '<span class="fu-soon">🟡 '+esc(fmtDate(d))+'</span>';return '<span style="color:#6b7280">'+esc(fmtDate(d))+'</span>';};
@@ -2747,7 +2900,7 @@ window.addEventListener('online',function(){processSyncQueue();});
     v6Queue('products','upsert',prods,'products',0);v6State.prods=prods.slice();v6PersistCache();
   };
   window.queueSync=function(){v6ProcessOutbox();};
-  window.processSyncQueue=function(){v6ProcessOutbox();};
+  window.processSyncQueue=function(){return v6ProcessOutbox();};
   window.syncToSheets=function(){v6ProcessOutbox();};
   window.syncTeamToSheets=function(){v6ProcessOutbox();};
 
@@ -2780,8 +2933,29 @@ window.addEventListener('online',function(){processSyncQueue();});
   function v6OrderPayloadFromForm(){
     var subtotal=0,disc=0;ordProds.forEach(function(p){subtotal+=Number(p.qty)*Number(p.rate);disc+=Number(p.disc||0);});
     var transport=Number(document.getElementById('ordTransport').value||0),install=Number(document.getElementById('ordInstall').value||0),extraDisc=Number(document.getElementById('ordExtraDisc').value||0),loss=Number(document.getElementById('ordLoss').value||0);
-    var grand=subtotal+transport+install-disc-extraDisc-loss,netSale=Math.max(0,subtotal-disc-extraDisc-loss),received=ordPmts.reduce(function(a,p){return a+(p.type==='refund'?0:Number(p.amt||0));},0),refunded=ordPmts.reduce(function(a,p){return a+(p.type==='refund'?Number(p.amt||0):0);},0),advTotal=Math.max(0,received-refunded),bal=Math.max(0,grand-advTotal);
-    return {id:curOrderId&&String(curOrderId).indexOf('TMP-')!==0?curOrderId:null,leadId:curOrderLeadId||null,custName:document.getElementById('ordCustName').value.trim(),phone:document.getElementById('ordPhone').value.trim(),custType:document.getElementById('ordType').value,salesperson:document.getElementById('ordSalesperson').value.trim(),date:v6DateOnly(document.getElementById('ordDate').value)||tod(),area:document.getElementById('ordArea').value.trim(),products:v6Clone(ordProds),subtotal:subtotal,discount:disc,transport:transport,install:install,extraDisc:extraDisc,loss:loss,netSale:netSale,grandTotal:Math.max(0,grand),payments:v6Clone(ordPmts),advTotal:advTotal,balance:bal,payStatus:getPayStatus(grand,advTotal),dispStatus:document.getElementById('ordDispStatus').value,updatedBy:curUser};
+    ordPmts = (Array.isArray(ordPmts)?ordPmts:[]).map(function(p){
+      p = p && typeof p === 'object' ? p : {};
+      var raw = p.amt;
+      if(raw==null||raw==='')raw=p.amount;
+      if(raw==null||raw==='')raw=p.amountReceived;
+      if(raw==null||raw==='')raw=p.paymentAmount;
+      var amount=Number(raw);
+      p.amt=Number.isFinite(amount)&&amount>0?amount:0;
+      p.type=String(p.type||p.transactionType||'payment').toLowerCase()==='refund'?'refund':'payment';
+      if(p.date)p.date=v6DateOnly(p.date);
+      return p;
+    });
+    var grand=subtotal+transport+install-disc-extraDisc-loss,netSale=Math.max(0,subtotal-disc-extraDisc-loss);
+    var ledger={advance:0,regular:0,refunds:0};
+    ordPmts.forEach(function(p){
+      var amount=window.wdpParseMoney(p&& (p.amt!=null?p.amt:(p.amount!=null?p.amount:(p.amountReceived!=null?p.amountReceived:p.paymentAmount))));
+      if(!(amount>0))return;
+      if(String(p.type||p.transactionType||'payment').toLowerCase()==='refund'){ledger.refunds+=amount;return;}
+      if(String(p.kind||'').toLowerCase()==='advance'||/\badvance\b/i.test(String(p.ref||p.description||p.paymentType||'')))ledger.advance+=amount;
+      else ledger.regular+=amount;
+    });
+    var advTotal=Math.max(0,ledger.advance),regularPaid=Math.max(0,ledger.regular-ledger.refunds),collected=advTotal+regularPaid,bal=Math.max(0,grand-collected);
+    return {id:curOrderId&&String(curOrderId).indexOf('TMP-')!==0?curOrderId:null,leadId:curOrderLeadId||null,custName:document.getElementById('ordCustName').value.trim(),phone:document.getElementById('ordPhone').value.trim(),custType:document.getElementById('ordType').value,salesperson:document.getElementById('ordSalesperson').value.trim(),date:v6DateOnly(document.getElementById('ordDate').value)||tod(),area:document.getElementById('ordArea').value.trim(),products:v6Clone(ordProds),subtotal:subtotal,discount:disc,transport:transport,install:install,extraDisc:extraDisc,loss:loss,netSale:netSale,grandTotal:Math.max(0,grand),payments:v6Clone(ordPmts),advTotal:advTotal,totalPaymentsReceived:regularPaid,balance:bal,payStatus:getPayStatus(grand,collected),dispStatus:document.getElementById('ordDispStatus').value,updatedBy:curUser};
   }
   window.saveLead=async function(){
     if(isReadOnly())return;
@@ -2838,6 +3012,7 @@ window.addEventListener('online',function(){processSyncQueue();});
         clearNewAssigned(lead);
       }
 
+      window.__wdpLastSavedLeadId=String(lead.id||'');
       var idx=leads.findIndex(function(x){return x.id===lead.id;});
       var baseRev=existing?Number(existing.rev||0):0;
       if(idx>-1)leads[idx]=lead;else leads.push(lead);
@@ -2874,19 +3049,25 @@ window.addEventListener('online',function(){processSyncQueue();});
     if(isReadOnly())return;
     try{if(!validateOrderBeforeSave())return;}catch(e){alert(e.message);return;}
     var order=v6OrderPayloadFromForm();
-    if(!order.leadId){alert('Every sales order must be linked to a lead. Open the order from the lead.');return;}
-    if(order.salesperson!==curUser&&curRole==='sales'){alert('You can only save orders assigned to you.');return;}
     var existing=orders.find(function(o){return o.id===curOrderId;});
+    if(!order.leadId&&!existing){alert('Every new sales order must be linked to a lead. Open the order from the lead.');return;}
+    if(String(order.salesperson||'').trim().toLowerCase()!==String(curUser||'').trim().toLowerCase()&&curRole==='sales'){alert('You can only save orders assigned to you.');return;}
     if(existing){order.id=existing.id;order.rev=existing.rev||0;}
     var base=existing||{};var opId=order.id||v6Uuid();var tempId=order.id||('TMP-'+opId);order.id=tempId;
     var idx=orders.findIndex(function(o){return o.id===tempId;});if(idx>-1)orders[idx]=order;else orders.push(order);
     if(!existing)curOrderId=tempId;
     // Canonical financial snapshot is stored in both the local order cache and the durable outbox.
     // Payments (including later instalments and refunds) are the source of truth for paid/balance fields.
-    var grossPaid=(order.payments||[]).reduce(function(sum,p){var amount=Math.max(0,Number(p&&p.amt||0));return sum+(p&&p.type==='refund'?-amount:amount);},0);
-    order.advTotal=Math.max(0,grossPaid);
-    order.balance=Math.max(0,Number(order.grandTotal||0)-order.advTotal);
-    order.payStatus=getPayStatus(Number(order.grandTotal||0),order.advTotal);
+    order.payments=(Array.isArray(order.payments)?order.payments:[]).map(function(p){
+      p=p&&typeof p==='object'?p:{};
+      var raw=p.amt;if(raw==null||raw==='')raw=p.amount;if(raw==null||raw==='')raw=p.amountReceived;if(raw==null||raw==='')raw=p.paymentAmount;
+      var amount=window.wdpParseMoney(raw);p.amt=Number.isFinite(amount)&&amount>0?amount:0;
+      p.type=String(p.type||p.transactionType||'payment').toLowerCase()==='refund'?'refund':'payment';
+      if(p.date)p.date=v6DateOnly(p.date);
+      return p;
+    });
+    if(typeof window.repairOrderFinancials!=='function'){alert('Order financial calculation is unavailable. Please reload the CRM and try again.');return;}
+    window.repairOrderFinancials(order);
     order.updatedAt=new Date().toISOString();
     v6Queue('order','upsert',order,tempId,Number(base.rev||0));
     v6State.orders[tempId]=v6Clone(order);v6PersistCache();
@@ -3137,11 +3318,24 @@ window.addEventListener('online',function(){processSyncQueue();});
   window.renderDash=function(){
     var t=tod(),q=normText((document.getElementById('dashQ')||{}).value),ml=sortL(myLeads()),newCount=newLeadCount();
     if(q){var qp=phoneNorm(q);ml=ml.filter(function(l){return [l.client,l.area,l.assignedTo,pText(l.product),l.segment,l.status].some(function(v){return normText(v).includes(q);})||(qp&&phoneNorm(l.contact).includes(qp));});}
+    // Dashboard summary cards must filter the visible rows, not just update their styling.
+    if(dashFilter==='b2c')ml=ml.filter(function(l){return normText(l.segment)==='b2c';});
+    else if(dashFilter==='b2b')ml=ml.filter(function(l){return normText(l.segment)==='b2b';});
+    else if(dashFilter==='today')ml=ml.filter(function(l){return v6DateOnly(l.followupDate)===t&&isActive(l);});
+    else if(dashFilter==='won')ml=ml.filter(function(l){return normText(l.status)==='won';});
+    else if(dashFilter==='lost')ml=ml.filter(function(l){var st=normText(l.status);return st==='lost'||st==='not interested';});
+    else if(dashFilter==='active')ml=ml.filter(function(l){return isActive(l);});
     var tb=document.getElementById('dashTb');
-    if(tb)tb.innerHTML=ml.length?ml.map(function(l,i){return '<tr class="'+rowClass(l)+'" onclick="viewLead(\''+esc(l.id)+'\')"><td>'+(i+1)+'</td><td>'+esc(fmtDate(l.date))+'</td><td>'+rowClient(l)+'</td><td><span class="badge '+(l.segment==='B2B'?'bb2b':'bb2c')+'">'+esc(l.segment)+'</span></td><td>'+pSum(l.product)+'</td><td>'+esc(l.assignedTo||'—')+'</td><td>'+sbadge(l.status)+'</td><td>'+fuLbl(l.followupDate,l.status)+'</td><td onclick="event.stopPropagation()">'+aBtns(l.id)+'</td></tr>';}).join(''):'<tr><td colspan="9" style="text-align:center;padding:24px;color:#6b7280">No leads found.</td></tr>';
+    if(tb)tb.innerHTML=ml.length?ml.map(function(l,i){return '<tr class="'+rowClass(l)+'" onclick="viewLead(\''+esc(l.id)+'\')"><td>'+(i+1)+'</td><td>'+esc(fmtDate(l.date))+'</td><td>'+rowClient(l)+'</td><td><span class="badge '+(l.segment==='B2B'?'bb2b':'bb2c')+'">'+esc(l.segment)+'</span></td><td>'+pSum(l.product)+'</td><td>'+esc(l.assignedTo||'—')+'</td><td>'+sbadge(l.status)+'</td><td>'+fuLbl(l.followupDate,l.status)+'</td><td onclick="event.stopPropagation()">'+aBtns(l.id)+'</td></tr>';}).join(''):'<tr><td colspan="9" style="text-align:center;padding:24px;color:#6b7280">No leads found for this filter.</td></tr>';
     var b=document.getElementById('newLeadsBanner');if(b){b.style.display=curRole==='sales'&&newCount?'flex':'none';if(newCount)b.innerHTML='<span style="font-size:22px">🆕</span><div><strong>'+newCount+' New Lead'+(newCount===1?'':'s')+'</strong><div style="font-size:11px;opacity:.85">Newly assigned leads are highlighted. Open the lead, add a note, or update status to clear it.</div></div>';}
+    var heading=document.querySelector('#tab-dash .sec-title');
+    if(heading){var labels={b2c:'B2C Leads',b2b:'B2B Leads',today:'Follow-ups Due Today',won:'Won Leads',lost:'Lost Leads',active:'Active Leads'};heading.textContent='📋 '+(dashFilter&&labels[dashFilter]?labels[dashFilter]+' ('+ml.length+')':'Recent Leads ('+ml.length+')');}
+    // Keep card selection state in sync after every render.
+    var cards=document.getElementById('sumCards');
+    if(cards)Array.from(cards.children).forEach(function(card){var click=card.getAttribute('onclick')||'',selected=(dashFilter&&click.indexOf("'"+dashFilter+"'")>=0);card.style.boxShadow=selected?'0 0 0 2px #C9A84C':'';card.style.cursor='pointer';});
   };
-  window.renderFU=function(){
+  window.setDashFilter=function(f){dashFilter=(dashFilter===f)?null:f;renderSum();window.renderDash();};
+window.renderFU=function(){
     var t=tod(),data=myLeads().filter(function(l){return l.followupDate&&v6DateOnly(l.followupDate)&&!['Won','Lost','Not Interested'].includes(l.status);});
     data=sortL(data);
     var tb=document.getElementById('fuTb');
@@ -3188,7 +3382,23 @@ window.addEventListener('online',function(){processSyncQueue();});
     v6ClearAuthorizedCache();
     if(reload)location.reload();else{document.getElementById('loginWrap').style.display='';document.getElementById('appWrap').style.display='none';refreshLoginDrop();}
   }
-  window.logout=function(){v6ForceLogout(true);};
+  /* Logout is allowed only after the server confirms every queued write for this user. */
+  window.logout=async function(){
+    var btn=document.querySelector('.logout[onclick="logout()"]');
+    if(window.__wdpLogoutBusy)return;
+    window.__wdpLogoutBusy=true;
+    if(btn){btn.disabled=true;btn.textContent='Syncing…';}
+    try{
+      if(typeof window.wdpFlushOutbox!=='function')throw new Error('The safe sync controller did not load. Your session remains open.');
+      await window.wdpFlushOutbox(30000,true);
+      v6ForceLogout(true);
+    }catch(e){
+      alert('Logout paused because the server has not confirmed your changes. Your session and queued edits are still here.\n\n'+(e&&e.message||'Sync could not be confirmed.'));
+    }finally{
+      window.__wdpLogoutBusy=false;
+      if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent='Logout';}
+    }
+  };
 
   window.login=async function(){
     var sel=document.getElementById('lUser'),pinEl=document.getElementById('lPin'),err=document.getElementById('lErr'),loginBtn=document.querySelector('.login-btn');err.style.display='none';
@@ -3218,9 +3428,34 @@ window.addEventListener('online',function(){processSyncQueue();});
         if(!mig||!mig.data)throw new Error('Migration did not return the imported data. Existing local data was preserved.');
         v6ApplyFull(mig.data);
       }else{
-        v6ClearAuthorizedCache();
-        if(d.data)v6ApplyFull(d.data);
-        else await v6Pull(true);
+        /* Never trust a possibly empty/stale login payload as the full dataset.
+           The authenticated full pull is the source of truth across devices. */
+        var loginData=d.data;
+        var loginHasRecords=!!(loginData&&((Array.isArray(loginData.leads)&&loginData.leads.length)||(Array.isArray(loginData.orders)&&loginData.orders.length)));
+        if(loginHasRecords){
+          v6ClearAuthorizedCache();
+          v6ApplyFull(loginData);
+        }else{
+          /* Snapshot local data before the pull: a blank server response must
+             not overwrite a useful local cache while we diagnose sync. */
+          var prePullCache={
+            leads:v6Get('wdp_leads',[]),orders:v6Get('wdp_orders',[]),
+            deletedLeads:v6Get('wdp_deleted',[]),prods:v6Get('wdp_prods',V6_DEFAULT_PRODUCTS.slice())
+          };
+          await v6Pull(true);
+          if((!Array.isArray(leads)||!leads.length)&&(!Array.isArray(orders)||!orders.length)){
+            var cacheHasRecords=(Array.isArray(prePullCache.leads)&&prePullCache.leads.length)||(Array.isArray(prePullCache.orders)&&prePullCache.orders.length);
+            if(cacheHasRecords){
+              leads=prePullCache.leads;orders=prePullCache.orders;
+              deletedLeads=Array.isArray(prePullCache.deletedLeads)?prePullCache.deletedLeads:[];
+              prods=Array.isArray(prePullCache.prods)&&prePullCache.prods.length?prePullCache.prods:V6_DEFAULT_PRODUCTS.slice();
+              v6State.leads=v6IndexClone(leads);v6State.orders=v6IndexClone(orders);v6State.deleted=v6IndexClone(deletedLeads);v6State.prods=prods.slice();
+              v6Set('wdp_leads',leads);v6Set('wdp_orders',orders);v6Set('wdp_deleted',deletedLeads);v6Set('wdp_prods',prods);
+              renderAll();
+              throw new Error('The server returned no leads or orders. Your existing local data was restored and preserved. Please verify server sync before continuing.');
+            }
+          }
+        }
       }
       document.getElementById('loginWrap').style.display='none';document.getElementById('appWrap').style.display='block';setTimeout(function(){if(typeof window.scheduleFollowupNotifications==='function')window.scheduleFollowupNotifications();},250);
       document.getElementById('uBadge').textContent=u.name+(u.role==='founder'?' 👑':u.role==='accountant'?' 📊':'');
@@ -3295,6 +3530,44 @@ window.addEventListener('online',function(){processSyncQueue();});
     v6PatchSearches();
     var info=document.getElementById('v6SyncInfo');if(info)info.textContent='Secure server roster loaded · login required';
   };
+
+  /* Reliable outbox drain: respect retry backoff instead of cancelling it in a tight loop. */
+  window.wdpProcessOutbox=function(){return v6ProcessOutbox();};
+  window.wdpFlushOutbox=async function(timeoutMs,forceRetry){
+    var timeout=Math.max(1000,Number(timeoutMs)||30000),deadline=Date.now()+timeout;
+    if(forceRetry){
+      var initial=v6Outbox(),changed=false;
+      initial.forEach(function(op){
+        if(v6UserOwnsOp(op)){op.nextAttemptAt=0;delete op.lastError;delete op.lastCode;changed=true;}
+      });
+      if(changed)v6SaveOutbox(initial);
+    }
+    while(Date.now()<deadline){
+      var pending=v6Outbox().filter(v6UserOwnsOp);
+      if(!pending.length)return {ok:true,pending:0};
+      if(!navigator.onLine)throw new Error('Device is offline. '+pending.length+' change(s) are still queued.');
+      if(!v6Token)throw new Error('Secure session is unavailable. '+pending.length+' change(s) remain queued.');
+      var now=Date.now(),due=pending.some(function(op){return Number(op.nextAttemptAt||0)<=now;});
+      if(due){
+        try{await v6ProcessOutbox();}catch(e){/* failed writes remain in the durable queue */}
+        var afterAttempt=v6Outbox().filter(v6UserOwnsOp);
+        var hardFailure=afterAttempt.find(function(op){
+          var code=String(op&&op.lastCode||'').toUpperCase();
+          return op&&op.lastError&&/^(FORBIDDEN|BAD_ID|ORDER_DATE_INVALID|ORDER_LEAD_REQUIRED|LEAD_NOT_FOUND|ORDER_EXISTS|ORDER_[A-Z_]+|PAYMENT_[A-Z_]+|REFUND_[A-Z_]+|INVALID_[A-Z_]+)$/.test(code);
+        });
+        if(hardFailure)throw new Error('Server rejected a queued change ('+(hardFailure.lastCode||'VALIDATION_ERROR')+'): '+String(hardFailure.lastError).slice(0,240));
+        await new Promise(function(resolve){setTimeout(resolve,180);});
+      }else{
+        var next=Math.min.apply(Math,pending.map(function(op){return Number(op.nextAttemptAt||0)>now?Number(op.nextAttemptAt):now+500;}));
+        await new Promise(function(resolve){setTimeout(resolve,Math.max(100,Math.min(500,next-now)));});
+      }
+    }
+    var left=v6Outbox().filter(v6UserOwnsOp);
+    var failed=left.find(function(op){return op.lastError;});
+    var detail=failed?' Last server error: '+String(failed.lastError).slice(0,240)+'.':'';
+    throw new Error(left.length+' change(s) are still unconfirmed after waiting for the server.'+detail+' Keep this session open and retry after the sync error is corrected.');
+  };
+
 })();
 
 
@@ -3304,21 +3577,87 @@ window.addEventListener('online',function(){processSyncQueue();});
   function byId(id){return document.getElementById(id);}
   function money(n){return 'Rs. '+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});}
   function activeLead(l){return l&&!['Won','Lost','Not Interested'].includes(l.status);}
-  function receivedForOrder(o){
-    var ps=Array.isArray(o&&o.payments)?o.payments:[];
-    if(ps.length) return ps.reduce(function(sum,p){var a=Math.max(0,Number(p.amt||p.amount||0));return sum+(p.type==='refund'?-a:a);},0);
-    return Number(o&&o.advTotal||0);
+  function paymentAmount(p){
+    if(!p||typeof p!=='object')return 0;
+    var raw=p.amt;
+    if(raw==null||raw==='')raw=p.amount;
+    if(raw==null||raw==='')raw=p.amountReceived;
+    if(raw==null||raw==='')raw=p.paymentAmount;
+    var n=window.wdpParseMoney(raw);
+    return Number.isFinite(n)&&n>0?n:0;
   }
+  function orderPaymentList(o){
+    var candidates=[o&&o.payments,o&&o.paymentRecords,o&&o.transactions,o&&o.paymentHistory,o&&o.paymentEntries,o&&o.receipts];
+    for(var i=0;i<candidates.length;i++){
+      if(Array.isArray(candidates[i])&&candidates[i].length)return candidates[i];
+    }
+    return [];
+  }
+  // Keep the two concepts separate:
+  // - advanceReceivedForOrder: only entries explicitly marked as an advance.
+  // - regularPaymentsForOrder: subsequent/general payment entries, excluding advances.
+  // - receivedForOrder: net cash collected across both, used only for balance/status.
+  function isAdvanceEntry(p){
+    return !!p && (String(p.kind||'').toLowerCase()==='advance' ||
+      /\badvance\b/i.test(String(p.ref||p.description||p.paymentType||'')));
+  }
+  function isRefundEntry(p){
+    return String(p&& (p.type||p.transactionType||p.entryType)||'payment').toLowerCase()==='refund';
+  }
+  function paymentLedgerTotals(o){
+    var ps=orderPaymentList(o);
+    if(!ps.length && o && Array.isArray(o.legacyPaymentLedger)) ps=o.legacyPaymentLedger;
+    var totals={advance:0,regular:0,refunds:0,allReceived:0};
+    ps.forEach(function(p){
+      var amt=paymentAmount(p);
+      if(!(amt>0))return;
+      if(isRefundEntry(p)){totals.refunds+=amt;return;}
+      totals.allReceived+=amt;
+      if(isAdvanceEntry(p))totals.advance+=amt;
+      else totals.regular+=amt;
+    });
+    // Only use explicitly named legacy advance fields as an advance fallback.
+    if(!totals.advance){
+      var legacyAdvance=[o&&o.advancePaymentReceived,o&&o.advanceReceived,o&&o.advanceAmount,o&&o.advancePayment];
+      for(var i=0;i<legacyAdvance.length;i++){var a=wdpParseMoney(legacyAdvance[i]);if(a>0){totals.advance=a;break;}}
+    }
+    // Legacy order-level payment totals are general payments only when no ledger entries exist.
+    if(!ps.length && !totals.regular){
+      var legacyPaid=[o&&o.totalPaymentsReceived,o&&o.amountPaid,o&&o.paidAmount];
+      for(var j=0;j<legacyPaid.length;j++){var v=wdpParseMoney(legacyPaid[j]);if(v>0){totals.regular=v;break;}}
+    }
+    totals.allReceived=Math.max(0,totals.advance+totals.regular-totals.refunds);
+    return totals;
+  }
+  function receivedForOrder(o){
+    var t=paymentLedgerTotals(o);
+    return Math.max(0,t.allReceived);
+  }
+  window.wdpRegularPaymentTotal=function(o){
+    var t=paymentLedgerTotals(o);
+    return Math.max(0,t.regular-t.refunds);
+  };
   function totalForOrder(o){
     if(o&&o.grandTotal!=null&&isFinite(Number(o.grandTotal)))return Math.max(0,Number(o.grandTotal));
     var sub=Number(o&&o.subtotal||0),disc=Number(o&&o.discount||0)+Number(o&&o.extraDisc||0),tr=Number(o&&o.transport||0),ins=Number(o&&o.install||0),loss=Number(o&&o.loss||0);
     return Math.max(0,sub+tr+ins-disc-loss);
   }
   function repairOrderFinancials(o){
-    var grand=totalForOrder(o),paid=Math.max(0,receivedForOrder(o));
-    o.grandTotal=grand;o.advTotal=paid;o.balance=Math.max(0,grand-paid);o.payStatus=typeof getPayStatus==='function'?getPayStatus(grand,paid):(o.balance<=0?'Fully Paid':paid>0?'Partially Paid':'Balance Due');
+    if(!o)return o;
+    var grand=totalForOrder(o),ledger=paymentLedgerTotals(o);
+    var advance=Math.max(0,Number(ledger.advance)||0);
+    var regular=Math.max(0,(Number(ledger.regular)||0)-(Number(ledger.refunds)||0));
+    var collected=advance+regular;
+    o.grandTotal=grand;
+    o.advTotal=advance;
+    o.totalPaymentsReceived=regular;
+    o.balance=Math.max(0,grand-collected);
+    o.payStatus=typeof getPayStatus==='function'?getPayStatus(grand,collected):(o.balance<=0?'Fully Paid':collected>0?'Partially Paid':'Balance Due');
     return o;
   }
+  // Expose the financial repair helper for the earlier saveOrder handler, which
+  // lives outside this closure. The helper's dependencies remain private here.
+  window.repairOrderFinancials=repairOrderFinancials;
   function setFollowupTimeUI(l){var e=byId('fFUTime');if(e)e.value=(l&&l.followupTime)||'16:00';}
   // Extend the existing form handlers without changing the secure server/outbox architecture.
   var oldOpenAdd=window.openAdd;
@@ -3508,10 +3847,11 @@ window.addEventListener('online',function(){processSyncQueue();});
 
   // Reports: build rows from every assigned salesperson in the data, not only current roster.
   window.renderRep=function(){
-    var t=tod(),names=[];(team&&team.members||[]).forEach(function(m){if(m&&m.name&&names.indexOf(m.name)<0)names.push(m.name);});
+    if(typeof updateReportPeriodFields==='function')updateReportPeriodFields();
+    var t=tod(),reportLeads=typeof getReportFilteredLeads==='function'?getReportFilteredLeads():(leads||[]).slice(),names=[];(team&&team.members||[]).forEach(function(m){if(m&&m.name&&names.indexOf(m.name)<0)names.push(m.name);});
     (leads||[]).forEach(function(l){if(l&&l.assignedTo&&names.indexOf(l.assignedTo)<0)names.push(l.assignedTo);});
     names.sort(function(a,b){return a.localeCompare(b);});
-    var b2b=leads.filter(function(l){return l.segment==='B2B';}),b2c=leads.filter(function(l){return l.segment==='B2C';}),won=leads.filter(function(l){return l.status==='Won';}),lost=leads.filter(function(l){return l.status==='Lost';}),act=leads.filter(activeLead);
+    var b2b=reportLeads.filter(function(l){return l.segment==='B2B';}),b2c=reportLeads.filter(function(l){return l.segment==='B2C';}),won=reportLeads.filter(function(l){return l.status==='Won';}),lost=reportLeads.filter(function(l){return l.status==='Lost';}),act=reportLeads.filter(activeLead);
     // Accountant report view intentionally excludes all non-Won lead statistics.
     if(curRole==='accountant'){
       var ac=byId('repCards');if(ac)ac.innerHTML=[['Won Leads',won.length,'green'],['Won B2B',won.filter(function(l){return l.segment==='B2B';}).length,'purple'],['Won B2C',won.filter(function(l){return l.segment==='B2C';}).length,'blue']].map(function(c){return '<div class="card"><div class="lbl">'+esc(c[0])+'</div><div class="val '+c[2]+'">'+esc(c[1])+'</div></div>';}).join('');
@@ -3526,19 +3866,23 @@ window.addEventListener('online',function(){processSyncQueue();});
     var teamSec=byId('repTb');if(teamSec&&teamSec.closest('.sec'))teamSec.closest('.sec').style.display='';
     var gh=byId('reportHero');if(gh){gh.querySelector('h1').textContent='Performance Overview';gh.querySelector('p').textContent='A clear, at-a-glance view of your leads, team activity and sales health.';var meta=gh.querySelector('.report-hero-meta small');if(meta)meta.textContent='Founder dashboard';}
     var pin=byId('accountantPinSec');if(pin)pin.style.display='none';
+    var periodMode=(byId('repPeriodMode')||{}).value||'all',chosenPerson=(byId('repSalesperson')||{}).value||'';
+    var periodLabel=periodMode==='date'?((byId('repDate')||{}).value||'Select a date'):periodMode==='range'?(((byId('repFrom')||{}).value||'Beginning')+' → '+((byId('repTo')||{}).value||'Today')):periodMode==='month'?((byId('repMonth')||{}).value||'Select a month'):periodMode==='year'?((byId('repYear')||{}).value||'Select a year'):'All Time';
+    var periodPill=byId('repPeriodPill');if(periodPill)periodPill.textContent='● '+periodLabel+(chosenPerson?' · '+chosenPerson:'');
+    var filterSummary=byId('repFilterSummary');if(filterSummary){var fromV=(byId('repFrom')||{}).value||'',toV=(byId('repTo')||{}).value||'';filterSummary.textContent=(periodMode==='range'&&fromV&&toV&&fromV>toV?'Start date must be on or before end date. ':'Showing '+reportLeads.length+' lead(s) · '+(chosenPerson||'all salespeople')+' · '+periodLabel+'. Metrics use lead creation dates.');}
     var totalBill=0,totalPaid=0,totalDue=0;
     orders.forEach(function(o){repairOrderFinancials(o);totalBill+=Number(o.grandTotal||0);totalPaid+=Number(o.advTotal||0);totalDue+=Number(o.balance||0);});
-    var cards=[['Total Leads',leads.length,'navy'],['B2B Leads',b2b.length,'purple'],['B2C Leads',b2c.length,'blue'],['Won',won.length,'green'],['Lost',lost.length,'red'],['Active Leads',act.length,'navy'],['Total Sales',money(totalBill),'green'],['Total Payments Received',money(totalPaid),'blue'],['Balance Due',money(totalDue),'red']];
+    var cards=[['Total Leads',reportLeads.length,'navy'],['B2B Leads',b2b.length,'purple'],['B2C Leads',b2c.length,'blue'],['Won',won.length,'green'],['Lost',lost.length,'red'],['Active Leads',act.length,'navy'],['Total Sales',money(totalBill),'green'],['Total Payments Received',money(totalPaid),'blue'],['Balance Due',money(totalDue),'red']];
     var rc=byId('repCards');if(rc){rc.classList.add('report-cards');var repIcons={'Total Leads':'◉','B2B Leads':'↗','B2C Leads':'⌂','Won':'✓','Lost':'×','Active Leads':'◎','Total Sales':'₹','Total Payments Received':'↙','Balance Due':'!'};rc.innerHTML=cards.map(function(c){return '<div class="card"><div class="lbl"><span aria-hidden="true" style="display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:#f2f5fa;color:#53647d;font-size:13px">'+(repIcons[c[0]]||'•')+'</span>'+esc(c[0])+'</div><div class="val '+c[2]+'">'+esc(c[1])+'</div></div>';}).join('');}
-    var total=leads.length, wonPct=total?Math.round(won.length/total*100):0, b2bPct=total?Math.round(b2b.length/total*100):0, b2cPct=total?Math.round(b2c.length/total*100):0;
+    var total=reportLeads.length, wonPct=total?Math.round(won.length/total*100):0, b2bPct=total?Math.round(b2b.length/total*100):0, b2cPct=total?Math.round(b2c.length/total*100):0;
     var visuals=byId('repVisuals');
     if(visuals)visuals.innerHTML='<div class="report-visual-card"><div class="report-visual-title"><div><h3>Lead mix</h3><p>How your current pipeline is split by customer segment.</p></div><span class="report-mini-tag">SEGMENTS</span></div><div class="report-bar-label"><span>B2B trade partners</span><strong>'+b2b.length+' <span style="color:#8792a4;font-weight:500">('+b2bPct+'%)</span></strong></div><div class="report-track"><span style="width:'+b2bPct+'%;background:linear-gradient(90deg,#8b5cf6,#b49af9)"></span></div><div class="report-bar-label"><span>B2C direct customers</span><strong>'+b2c.length+' <span style="color:#8792a4;font-weight:500">('+b2cPct+'%)</span></strong></div><div class="report-track"><span style="width:'+b2cPct+'%;background:linear-gradient(90deg,#279de0,#83d0f6)"></span></div><div class="report-mix-legend"><span><i class="report-legend-dot" style="background:#8b5cf6"></i>B2B</span><span><i class="report-legend-dot" style="background:#279de0"></i>B2C</span></div></div><div class="report-visual-card"><div class="report-visual-title"><div><h3>Won conversion</h3><p>Won leads as a share of all recorded leads.</p></div><span class="report-mini-tag">OUTCOME</span></div><div class="report-conversion"><div class="report-ring" style="--won-pct:'+wonPct+'%"><strong>'+wonPct+'%</strong></div><div class="report-conversion-copy"><strong>'+won.length+' Won lead'+(won.length===1?'':'s')+'</strong><p>'+Math.max(0,total-won.length)+' lead'+(total-won.length===1?'':'s')+' are in other statuses. This is a snapshot of current CRM records.</p></div></div></div>';
-    var tb=byId('repTb');if(tb)tb.innerHTML=names.map(function(name){var sl=leads.filter(function(l){return l.assignedTo===name;}),so=orders.filter(function(o){return o.salesperson===name;});var sales=so.reduce(function(sum,o){return sum+totalForOrder(o);},0);return '<tr><td><strong>'+esc(name)+'</strong></td><td>'+sl.length+'</td><td>'+sl.filter(function(l){return l.segment==='B2B';}).length+'</td><td>'+sl.filter(function(l){return l.segment==='B2C';}).length+'</td><td style="color:#16a34a;font-weight:700">'+sl.filter(function(l){return l.status==='Won';}).length+'</td><td style="color:#dc2626">'+sl.filter(function(l){return l.status==='Lost';}).length+'</td><td>'+sl.filter(activeLead).length+'</td><td style="color:#d97706;font-weight:700">'+sl.filter(function(l){return l.followupDate===t&&activeLead(l);}).length+'</td></tr>';}).join('')||'<tr><td colspan="8">No assigned leads found.</td></tr>';
+    var tb=byId('repTb');if(tb)tb.innerHTML=names.filter(function(name){var chosen=(byId('repSalesperson')||{}).value||'';return !chosen||name.toLowerCase()===chosen.toLowerCase();}).map(function(name){var sl=reportLeads.filter(function(l){return String(l.assignedTo||'').trim().toLowerCase()===name.toLowerCase();}),so=orders.filter(function(o){return o.salesperson===name;});var sales=so.reduce(function(sum,o){return sum+totalForOrder(o);},0);return '<tr><td><strong>'+esc(name)+'</strong></td><td>'+sl.length+'</td><td>'+sl.filter(function(l){return l.segment==='B2B';}).length+'</td><td>'+sl.filter(function(l){return l.segment==='B2C';}).length+'</td><td style="color:#16a34a;font-weight:700">'+sl.filter(function(l){return l.status==='Won';}).length+'</td><td style="color:#dc2626">'+sl.filter(function(l){return l.status==='Lost';}).length+'</td><td>'+sl.filter(activeLead).length+'</td><td style="color:#d97706;font-weight:700">'+sl.filter(function(l){return l.followupDate===t&&activeLead(l);}).length+'</td></tr>';}).join('')||'<tr><td colspan="8">No assigned leads found.</td></tr>';
     var sec=byId('globalLeadsSec');if(sec)sec.style.display=curRole==='founder'?'':'none';
     if(curRole!=='founder'){if(byId('allTb'))byId('allTb').innerHTML='';return;}
     var q=normText((byId('allQ')||{}).value),pe=byId('allPerson'),person=pe?pe.value:'';
     if(pe){var cur=person;pe.innerHTML='<option value="">All Salespersons</option>'+names.map(function(n){return '<option value="'+esc(n)+'"'+(n===cur?' selected':'')+'>'+esc(n)+'</option>';}).join('');person=pe.value;}
-    var data=leads.slice();if(person)data=data.filter(function(l){return l.assignedTo===person;});
+    var data=reportLeads.slice();if(person)data=data.filter(function(l){return l.assignedTo===person;});
     if(q){var qp=phoneNorm(q);data=data.filter(function(l){return [l.client,l.contact,l.area,l.assignedTo,pText(l.product),l.segment,l.status].some(function(v){return normText(v).includes(q);})||phoneNorm(l.contact).includes(qp);});}
     data.sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
     if(byId('allTb'))byId('allTb').innerHTML=data.length?data.map(function(l,i){return '<tr class="click-row" onclick="viewLead(\''+esc(l.id)+'\')"><td>'+(i+1)+'</td><td>'+esc(fmtDate(l.date))+'</td><td>'+rowClient(l)+'</td><td>'+esc(l.contact||'—')+'</td><td><span class="badge '+(l.segment==='B2B'?'bb2b':'bb2c')+'">'+esc(l.segment)+'</span></td><td>'+pSum(l.product)+'</td><td>'+esc(l.area||'—')+'</td><td><strong>'+esc(l.assignedTo||'—')+'</strong></td><td>'+sbadge(l.status)+'</td><td>'+fuLbl(l.followupDate,l.status)+(l.followupTime?' · '+esc(l.followupTime):'')+'</td><td onclick="event.stopPropagation()">'+aBtns(l.id)+'</td></tr>';}).join(''):'<tr><td colspan="11" style="text-align:center;padding:24px;color:#6b7280">No leads found.</td></tr>';
@@ -3548,7 +3892,7 @@ window.addEventListener('online',function(){processSyncQueue();});
   window.renderMySales=function(){
     var periodEl=byId('salesPeriod'),spEl=byId('salesPerson');if(!periodEl)return;var period=periodEl.value,spFilter=spEl?spEl.value:'',person=(curRole==='founder'||curRole==='accountant')?(spFilter||null):curUser,now=new Date(),fromDate=null,toDate=null;
     if(period==='thismonth'){fromDate=new Date(now.getFullYear(),now.getMonth(),1);toDate=new Date(now.getFullYear(),now.getMonth()+1,1);}else if(period==='lastmonth'){fromDate=new Date(now.getFullYear(),now.getMonth()-1,1);toDate=new Date(now.getFullYear(),now.getMonth(),1);}else if(period==='3months'){fromDate=new Date(now.getFullYear(),now.getMonth()-2,1);toDate=new Date(now.getFullYear(),now.getMonth()+1,1);}else if(period==='6months'){fromDate=new Date(now.getFullYear(),now.getMonth()-5,1);toDate=new Date(now.getFullYear(),now.getMonth()+1,1);}
-    var rows=[];(orders||[]).forEach(function(o){if(person&&o.salesperson!==person)return;if(fromDate&&o.date){var d=new Date(o.date);if(d<fromDate||(toDate&&d>=toDate))return;}repairOrderFinancials(o);var subtotal=Number(o.subtotal||0),disc=Number(o.discount||0)+Number(o.extraDisc||0),loss=Number(o.loss||0),payments=Array.isArray(o.payments)?o.payments:[];var paid=payments.length?payments.reduce(function(sum,p){var amt=Math.max(0,Number(p.amt||p.amount||0));return sum+(p.type==='refund'?-amt:amt);},0):Number(o.advTotal||0);var advance=payments.length?payments.reduce(function(sum,p){var amt=Math.max(0,Number(p.amt||p.amount||0));var isAdvance=p.kind==='advance'||/advance/i.test(String(p.ref||p.description||''));return sum+(isAdvance&&p.type!=='refund'?amt:0);},0):Number(o.advTotal||0);rows.push({id:o.id,leadId:o.leadId,date:o.date,client:o.custName,salesperson:o.salesperson,saleAmt:subtotal,transport:Number(o.transport||0),inst:Number(o.install||0),disc:disc,loss:loss,netSale:Number(o.netSale!=null?o.netSale:Math.max(0,subtotal-disc-loss)),total:Number(o.grandTotal||0),paid:Math.max(0,paid),advance:Math.max(0,advance),bal:Number(o.balance||0)});});
+    var rows=[];(orders||[]).forEach(function(o){if(person&&String(o.salesperson||'').trim().toLowerCase()!==String(person||'').trim().toLowerCase())return;if(fromDate&&o.date){var d=new Date(o.date);if(d<fromDate||(toDate&&d>=toDate))return;}var subtotal=Number(o.subtotal||0),disc=Number(o.discount||0)+Number(o.extraDisc||0),loss=Number(o.loss||0),ledger=paymentLedgerTotals(o),advance=Math.max(0,ledger.advance),paid=Math.max(0,ledger.regular-ledger.refunds),grand=totalForOrder(o),combinedPaid=Math.max(0,advance+paid);o.grandTotal=grand;o.balance=Math.max(0,grand-combinedPaid);o.payStatus=typeof getPayStatus==='function'?getPayStatus(grand,combinedPaid):(o.balance<=0?'Fully Paid':combinedPaid>0?'Partially Paid':'Balance Due');rows.push({id:o.id,leadId:o.leadId,date:o.date,client:o.custName,salesperson:o.salesperson,saleAmt:subtotal,transport:Number(o.transport||0),inst:Number(o.install||0),disc:disc,loss:loss,netSale:Number(o.netSale!=null?o.netSale:Math.max(0,subtotal-disc-loss)),total:grand,paid:paid,advance:advance,bal:o.balance});});
     var totals={sale:0,transport:0,inst:0,disc:0,loss:0,net:0,total:0,paid:0,advance:0,bal:0};rows.forEach(function(r){Object.keys(totals).forEach(function(k){var map={sale:'saleAmt',transport:'transport',inst:'inst',disc:'disc',loss:'loss',net:'netSale',total:'total',paid:'paid',advance:'advance',bal:'bal'};totals[k]+=Number(r[map[k]]||0);});});
     byId('salesCards').innerHTML='<div class="card"><div class="lbl">Won Deals</div><div class="val navy">'+rows.length+'</div></div><div class="card"><div class="lbl">Product Sale</div><div class="val blue">'+money(totals.sale)+'</div></div><div class="card"><div class="lbl">Total Sales (Grand Total)</div><div class="val green">'+money(totals.total)+'</div></div><div class="card"><div class="lbl">Transport</div><div class="val gold">'+money(totals.transport)+'</div></div><div class="card"><div class="lbl">Installation</div><div class="val gold">'+money(totals.inst)+'</div></div><div class="card"><div class="lbl">Discount + Loss</div><div class="val red">'+money(totals.disc+totals.loss)+'</div></div><div class="card"><div class="lbl">Net Sales</div><div class="val green">'+money(totals.net)+'</div></div><div class="card" style="border:2px solid #16a34a"><div class="lbl">Advance Payment Received</div><div class="val green">'+money(totals.advance)+'</div></div><div class="card"><div class="lbl">Total Payments Received</div><div class="val green">'+money(totals.paid)+'</div></div><div class="card"><div class="lbl">Balance Due</div><div class="val red">'+money(totals.bal)+'</div></div>';
     byId('salesTb').innerHTML=rows.length?rows.map(function(r,i){return '<tr class="click-row" onclick="openOrder(\''+esc(r.id)+'\')"><td>'+(i+1)+'</td><td>'+esc(fmtDate(r.date))+'</td><td><strong>'+esc(r.client||'')+'</strong></td><td>'+esc(r.salesperson||'')+'</td><td style="color:#16a34a;font-weight:700">'+money(r.saleAmt)+'</td><td>'+money(r.transport)+'</td><td>'+money(r.inst)+'</td><td>'+money(r.disc+r.loss)+'</td><td style="font-weight:700;color:#16a34a">'+money(r.netSale)+'</td><td style="font-weight:700;color:#0f766e">'+money(r.total)+'</td><td style="color:#16a34a;font-weight:700">'+money(r.advance)+'</td><td>'+money(r.paid)+'</td><td style="color:'+(r.bal>0?'#dc2626':'#16a34a')+';font-weight:700">'+money(r.bal)+'</td></tr>';}).join(''):'<tr><td colspan="13" style="text-align:center;padding:20px;color:#6b7280">No sales orders in this period.</td></tr>';
@@ -3561,17 +3905,19 @@ window.addEventListener('online',function(){processSyncQueue();});
     var result=originalRenderOrders.apply(this,arguments);
     var tbody=byId('wonMissingOrderTb');
     if(tbody){
-      var linked=new Set((orders||[]).map(function(o){return String(o.leadId||'');}).filter(Boolean));
-      var missing=(leads||[]).filter(function(l){
-        if(!l||l.status!=='Won'||linked.has(String(l.id)))return false;
-        if(curRole==='sales'&&l.assignedTo!==curUser)return false;
+      var linkedOrders=new Map();
+      (orders||[]).forEach(function(o){if(o&&o.leadId)linkedOrders.set(String(o.leadId),o);});
+      var wonLeads=(leads||[]).filter(function(l){
+        if(!l||String(l.status||'').trim().toLowerCase()!=='won')return false;
+        if(curRole==='sales'&&String(l.assignedTo||'').trim().toLowerCase()!==String(curUser||'').trim().toLowerCase())return false;
         return true;
       }).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
-      tbody.innerHTML=missing.length?missing.map(function(l){
-        var action=isReadOnly()?'<span style="color:#6b7280">Read only</span>':'<button class="btn bg bsm" onclick="openOrderFromLead(\''+esc(l.id)+'\')">Create Sales Order</button>';
+      tbody.innerHTML=wonLeads.length?wonLeads.map(function(l){
+        var linked=linkedOrders.get(String(l.id));
+        var action=isReadOnly()?'<span style="color:#6b7280">Read only</span>':(linked?'<button class="btn bn2 bsm" onclick="openOrder(\''+esc(linked.id)+'\')">Edit Sales Order</button>':'<button class="btn bg bsm" onclick="openOrderFromLead(\''+esc(l.id)+'\')">Create Sales Order</button>');
         return '<tr><td><strong>'+esc(l.client||'Unnamed client')+'</strong></td><td>'+esc(l.contact||'—')+'</td><td>'+pSum(l.product)+'</td><td>'+esc(l.assignedTo||'—')+'</td><td>'+esc(fmtDate(l.date))+'</td><td>'+action+'</td></tr>';
-      }).join(''):'<tr><td colspan="6" style="text-align:center;padding:18px;color:#6b7280">All Won leads have a linked Sales Order.</td></tr>';
-      var sec=byId('wonMissingOrderSec');if(sec)sec.style.display=missing.length?'':'none';
+      }).join(''):'<tr><td colspan="6" style="text-align:center;padding:18px;color:#6b7280">No Won leads found for this account.</td></tr>';
+      var sec=byId('wonMissingOrderSec');if(sec)sec.style.display='';
     }
     return result;
   };
@@ -3737,5 +4083,437 @@ window.addEventListener('online',function(){processSyncQueue();});
 })();
 
 </script>
+
+<script>
+/* ===== CRM HOTFIX: canonical order records, working order access, payment totals ===== */
+(function(){
+  'use strict';
+  function n(v){ if(v==null||v==='') return 0; if(typeof window.wdpParseMoney==='function') return window.wdpParseMoney(v); var x=Number(String(v).replace(/[₹,\s]/g,'').replace(/^rs\.?/i,'')); return Number.isFinite(x)?x:0; }
+  function first(o,keys,fallback){ for(var i=0;i<keys.length;i++){var v=o&&o[keys[i]];if(v!==undefined&&v!==null&&v!=='')return v;} return fallback; }
+  function dateOnly(v){var x=String(v||'').trim();if(/^\d{4}-\d{2}-\d{2}/.test(x))return x.slice(0,10);var d=new Date(x);return !isNaN(d.getTime())?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):x;}
+  function normalizeOrder(o){
+    if(!o||typeof o!=='object')return o;
+    o.id=String(first(o,['id','orderId','_id'],''));
+    o.date=dateOnly(first(o,['date','orderDate','saleDate','createdAt','timestamp'],''));
+    o.custName=String(first(o,['custName','customerName','clientName','customer','client','name'],''));
+    o.phone=String(first(o,['phone','contact','contactNumber','mobile','mobileNumber'],''));
+    o.salesperson=String(first(o,['salesperson','salesPerson','salespersonName','assignedTo','assigned','createdByName','createdBy'],''));
+    o.custType=String(first(o,['custType','customerType','type','segment'],'B2C'));
+    o.area=String(first(o,['area','location','city'],''));
+    o.products=Array.isArray(o.products)?o.products:(Array.isArray(o.items)?o.items:(Array.isArray(o.orderItems)?o.orderItems:[]));
+    o.subtotal=n(first(o,['subtotal','productSale','saleAmount','productAmount'],0));
+    o.discount=n(first(o,['discount','productDiscount'],0));
+    o.transport=n(first(o,['transport','transportCharges'],0));
+    o.install=n(first(o,['install','installation','installationCharges'],0));
+    o.extraDisc=n(first(o,['extraDisc','extraDiscount'],0));
+    o.loss=n(first(o,['loss','lossAmount'],0));
+    var totalRaw=first(o,['grandTotal','totalBill','totalAmount','grand_total','totalSales'],null);
+    o.grandTotal=totalRaw!==null?n(totalRaw):Math.max(0,o.subtotal+o.transport+o.install-o.discount-o.extraDisc-o.loss);
+    var paymentKeys=['payments','paymentRecords','transactions','paymentHistory','paymentEntries','receipts'];
+    var list=[];for(var i=0;i<paymentKeys.length;i++){if(Array.isArray(o[paymentKeys[i]])&&o[paymentKeys[i]].length){list=o[paymentKeys[i]];break;}}
+    if(!list.length&&Array.isArray(o.legacyPaymentLedger)&&o.legacyPaymentLedger.length)list=o.legacyPaymentLedger;
+    if(!list.length){
+      var legacyAdv=n(first(o,['advTotal','advancePaymentReceived','advanceReceived','advanceAmount','advancePayment'],0));
+      var legacyRegular=n(first(o,['totalPaymentsReceived','paymentsReceived','amountPaid','paidAmount','totalPaid'],0));
+      if(legacyAdv>0)list.push({id:'legacy-advance-'+o.id,date:o.date,amt:legacyAdv,amount:legacyAdv,kind:'advance',mode:'Legacy record',ref:'Existing advance total',type:'payment'});
+      if(legacyRegular>0)list.push({id:'legacy-payment-'+o.id,date:o.date,amt:legacyRegular,amount:legacyRegular,kind:'regular',mode:'Legacy record',ref:'Existing payment total',type:'payment'});
+    }
+    o.payments=list.map(function(p){
+      p=p&&typeof p==='object'?p:{};
+      var amount=n(first(p,['amt','amount','amountReceived','paymentAmount','value'],0));
+      p.amt=amount;
+      p.type=String(first(p,['type','transactionType','entryType'],'payment')).toLowerCase()==='refund'?'refund':'payment';
+      if(p.date)p.date=dateOnly(p.date);
+      return p;
+    });
+    var adv=0,regular=0,refund=0;
+    o.payments.forEach(function(p){var a=Math.max(0,n(p.amt));if(!a)return;if(p.type==='refund'){refund+=a;return;}if(String(p.kind||'').toLowerCase()==='advance'||/\badvance\b/i.test(String(p.ref||p.description||p.paymentType||'')))adv+=a;else regular+=a;});
+    o.advTotal=adv;
+    o.totalPaymentsReceived=Math.max(0,regular-refund);
+    o.balance=Math.max(0,o.grandTotal-(adv+regular-refund));
+    o.payStatus=!o.grandTotal?'Pending':o.balance<=0.005?'Fully Paid':(adv+regular-refund)>0?'Partially Paid':'Balance Due';
+    o.netSale=n(first(o,['netSale','netSales'],Math.max(0,o.subtotal-o.discount-o.extraDisc-o.loss)));
+    o.dispStatus=String(first(o,['dispStatus','orderStatus','status'],'Order Confirmed'));
+    return o;
+  }
+  function normalizeAllOrders(){ if(Array.isArray(window.orders))window.orders=window.orders.filter(Boolean).map(normalizeOrder); }
+  function escH(v){return typeof window.esc==='function'?window.esc(v==null?'':String(v)):String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function fmtMoney(v){return 'Rs. '+(n(v)).toLocaleString('en-IN',{maximumFractionDigits:2});}
+  function same(a,b){return String(a||'').trim().toLocaleLowerCase()===String(b||'').trim().toLocaleLowerCase();}
+  function allowed(o){return !(window.curRole==='sales')||same(o.salesperson,window.curUser);}
+  function periodAllowed(o,filter){
+    var d=dateOnly(o.date),now=new Date(),x=new Date(d+'T00:00:00');
+    if(!d||isNaN(x.getTime()))return filter==='all';
+    if(filter==='today')return d===(typeof window.tod==='function'?window.tod():dateOnly(new Date().toISOString()));
+    if(filter==='thisweek'){var day=now.getDay(),diff=day===0?6:day-1,start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diff),end=new Date(start);end.setDate(end.getDate()+7);return x>=start&&x<end;}
+    if(filter==='thismonth')return x.getMonth()===now.getMonth()&&x.getFullYear()===now.getFullYear();
+    return true;
+  }
+  var originalOpenOrder=window.openOrder;
+  window.openOrder=function(id){
+    normalizeAllOrders();
+    var target=(window.orders||[]).find(function(o){return String(o.id)===String(id)||String(o.orderId)===String(id);});
+    if(!target){alert('This order is not in the currently loaded CRM data. Refresh/sync first; no order data was changed.');return;}
+    if(window.curRole==='sales'&&!same(target.salesperson,window.curUser)){alert('This order is assigned to another salesperson.');return;}
+    if(typeof originalOpenOrder==='function')return originalOpenOrder.call(this,target.id);
+  };
+  window.renderOrders=function(){
+    normalizeAllOrders();
+    var filter=(document.getElementById('ordFilter')||{}).value||'all';
+    var person=(document.getElementById('ordPerson')||{}).value||'';
+    var payF=(document.getElementById('ordPayStatus')||{}).value||'';
+    var data=(window.orders||[]).filter(function(o){return allowed(o)&&(!person||same(o.salesperson,person))&&(!payF||o.payStatus===payF)&&periodAllowed(o,filter);});
+    var grand=0,paid=0,balance=0;
+    data.forEach(function(o){grand+=n(o.grandTotal);paid+=n(o.advTotal)+n(o.totalPaymentsReceived);balance+=n(o.balance);});
+    var cards=document.getElementById('ordCards');
+    if(cards)cards.innerHTML='<div class="card"><div class="lbl">Total Orders</div><div class="val navy">'+data.length+'</div></div><div class="card"><div class="lbl">Total Amount</div><div class="val blue">'+fmtMoney(grand)+'</div></div><div class="card"><div class="lbl">Collected (Advance + Payments)</div><div class="val green">'+fmtMoney(paid)+'</div></div><div class="card" style="border:2px solid #dc2626"><div class="lbl">Outstanding</div><div class="val red">'+fmtMoney(balance)+'</div></div>';
+    var tb=document.getElementById('ordTb');
+    if(tb)tb.innerHTML=data.length?data.map(function(o){
+      var id=String(o.id||'');
+      return '<tr class="click-row" data-wdp-order-id="'+escH(id)+'" style="cursor:pointer"><td style="font-weight:700;color:#C9A84C">'+escH(id)+'</td><td>'+escH(typeof window.fmtDate==='function'?window.fmtDate(o.date):o.date)+'</td><td><strong>'+escH(o.custName)+'</strong><br><span style="font-size:10px;color:#6b7280">'+escH(o.phone)+'</span></td><td>'+escH(o.custType)+'</td><td>'+(o.products||[]).map(function(p){return '<span class="pt">'+escH(p.name||p.productName||'Product')+'</span>';}).join(' ')+'</td><td>'+escH(o.salesperson)+'</td><td>'+fmtMoney(o.netSale)+'</td><td>'+fmtMoney(o.grandTotal)+'</td><td style="color:#16a34a;font-weight:700">'+fmtMoney(o.totalPaymentsReceived)+'</td><td style="color:'+(o.balance>0?'#dc2626':'#16a34a')+';font-weight:700">'+fmtMoney(o.balance)+'</td><td>'+escH(o.payStatus)+'</td><td>'+escH(o.dispStatus)+'</td><td><button type="button" class="btn bn2 bsm" data-wdp-open-order="'+escH(id)+'">View / Edit</button></td></tr>';
+    }).join(''):'<tr><td colspan="13" style="text-align:center;padding:24px;color:#6b7280">No orders match these filters. Try All Orders and All Payment Status.</td></tr>';
+    var sp=document.getElementById('ordPerson');
+    if(sp&&(window.curRole==='founder'||window.curRole==='accountant')){var current=sp.value;var names=[...new Set((window.orders||[]).map(function(o){return o.salesperson;}).filter(Boolean))].sort();sp.innerHTML='<option value="">All Salesperson</option>'+names.map(function(name){return '<option value="'+escH(name)+'"'+(same(name,current)?' selected':'')+'>'+escH(name)+'</option>';}).join('');}
+     // Restore Won Leads panel in the final renderer (which otherwise replaced the earlier panel logic).
+     var wonBody=document.getElementById('wonMissingOrderTb'), wonSection=document.getElementById('wonMissingOrderSec');
+     if(wonBody){
+       var visibleWon=(window.leads||[]).filter(function(l){
+         if(!l || !same(l.status,'Won')) return false;
+         if(window.curRole==='sales' && !same(l.assignedTo,window.curUser)) return false;
+         return true;
+       }).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+       var allOrders=window.orders||[];
+       wonBody.innerHTML=visibleWon.length?visibleWon.map(function(l){
+         var linked=allOrders.find(function(o){
+           if(o.leadId!=null && String(o.leadId)===String(l.id)) return true;
+           return same(o.custName,l.client||l.clientName) && String(o.phone||'').replace(/\\D/g,'')===String(l.contact||l.phone||'').replace(/\\D/g,'');
+         });
+         var action=(typeof window.isReadOnly==='function'&&window.isReadOnly())?'<span style="color:#6b7280">Read only</span>':(linked?'<button type="button" class="btn bn2 bsm" data-wdp-open-order="'+escH(linked.id)+'">Edit Sales Order</button>':'<button type="button" class="btn bg bsm" data-wdp-create-order-lead="'+escH(l.id)+'">Create Sales Order</button>');
+         return '<tr><td><strong>'+escH(l.client||l.clientName||'Unnamed client')+'</strong></td><td>'+escH(l.contact||l.phone||'—')+'</td><td>'+escH(typeof window.pText==='function'?window.pText(l.product||l.products):'—')+'</td><td>'+escH(l.assignedTo||'—')+'</td><td>'+escH(typeof window.fmtDate==='function'?window.fmtDate(l.date):l.date||'—')+'</td><td>'+action+'</td></tr>';
+       }).join(''):'<tr><td colspan="6" style="text-align:center;padding:18px;color:#6b7280">No Won leads found in the currently loaded lead data.</td></tr>';
+       if(wonSection)wonSection.style.display='';
+     }
+  };
+  window.renderMySales=function(){
+    normalizeAllOrders();
+    var periodEl=document.getElementById('salesPeriod'),spEl=document.getElementById('salesPerson');
+    if(!periodEl)return;
+    var period=periodEl.value||'all',person=(window.curRole==='founder'||window.curRole==='accountant')?((spEl&&spEl.value)||''):String(window.curUser||'');
+    var now=new Date(),start=null,end=null;
+    if(period==='thismonth'){start=new Date(now.getFullYear(),now.getMonth(),1);end=new Date(now.getFullYear(),now.getMonth()+1,1);}
+    else if(period==='lastmonth'){start=new Date(now.getFullYear(),now.getMonth()-1,1);end=new Date(now.getFullYear(),now.getMonth(),1);}
+    else if(period==='3months'){start=new Date(now.getFullYear(),now.getMonth()-2,1);end=new Date(now.getFullYear(),now.getMonth()+1,1);}
+    else if(period==='6months'){start=new Date(now.getFullYear(),now.getMonth()-5,1);end=new Date(now.getFullYear(),now.getMonth()+1,1);}
+    var rows=(window.orders||[]).filter(function(o){
+      if(person&&!same(o.salesperson,person))return false;
+      var d=new Date(dateOnly(o.date)+'T00:00:00');
+      if(start&&!isNaN(d.getTime())&&(d<start||d>=end))return false;
+      return true;
+    });
+    var sums={subtotal:0,transport:0,install:0,discount:0,loss:0,net:0,grand:0,advance:0,paid:0,balance:0};
+    rows.forEach(function(o){sums.subtotal+=n(o.subtotal);sums.transport+=n(o.transport);sums.install+=n(o.install);sums.discount+=n(o.discount)+n(o.extraDisc);sums.loss+=n(o.loss);sums.net+=n(o.netSale);sums.grand+=n(o.grandTotal);sums.advance+=n(o.advTotal);sums.paid+=n(o.totalPaymentsReceived);sums.balance+=n(o.balance);});
+    var cards=document.getElementById('salesCards');
+    if(cards)cards.innerHTML='<div class="card"><div class="lbl">Won Deals / Orders</div><div class="val navy">'+rows.length+'</div></div><div class="card"><div class="lbl">Product Sale</div><div class="val blue">'+fmtMoney(sums.subtotal)+'</div></div><div class="card"><div class="lbl">Total Sales (Grand Total)</div><div class="val green">'+fmtMoney(sums.grand)+'</div></div><div class="card"><div class="lbl">Transport</div><div class="val gold">'+fmtMoney(sums.transport)+'</div></div><div class="card"><div class="lbl">Installation</div><div class="val gold">'+fmtMoney(sums.install)+'</div></div><div class="card"><div class="lbl">Discount + Loss</div><div class="val red">'+fmtMoney(sums.discount+sums.loss)+'</div></div><div class="card"><div class="lbl">Net Sales</div><div class="val green">'+fmtMoney(sums.net)+'</div></div><div class="card"><div class="lbl">Advance Payment Received</div><div class="val green">'+fmtMoney(sums.advance)+'</div></div><div class="card"><div class="lbl">Total Payments Received</div><div class="val green">'+fmtMoney(sums.paid)+'</div></div><div class="card"><div class="lbl">Balance Due</div><div class="val red">'+fmtMoney(sums.balance)+'</div></div>';
+    var tb=document.getElementById('salesTb');
+    if(tb)tb.innerHTML=rows.length?rows.map(function(o,i){
+      var id=String(o.id||'');
+      return '<tr class="click-row" data-wdp-order-id="'+escH(id)+'" style="cursor:pointer"><td>'+(i+1)+'</td><td>'+escH(typeof window.fmtDate==='function'?window.fmtDate(o.date):o.date)+'</td><td><strong>'+escH(o.custName)+'</strong></td><td>'+escH(o.salesperson)+'</td><td>'+fmtMoney(o.subtotal)+'</td><td>'+fmtMoney(o.transport)+'</td><td>'+fmtMoney(o.install)+'</td><td>'+fmtMoney(n(o.discount)+n(o.extraDisc)+n(o.loss))+'</td><td style="font-weight:700;color:#16a34a">'+fmtMoney(o.netSale)+'</td><td>'+fmtMoney(o.grandTotal)+'</td><td>'+fmtMoney(o.advTotal)+'</td><td style="font-weight:700;color:#16a34a">'+fmtMoney(o.totalPaymentsReceived)+'</td><td style="font-weight:700;color:'+(o.balance>0?'#dc2626':'#16a34a')+'">'+fmtMoney(o.balance)+' <button type="button" class="btn bn2 bsm" data-wdp-open-order="'+escH(id)+'">View / Edit</button></td></tr>';
+    }).join(''):'<tr><td colspan="13" style="text-align:center;padding:20px;color:#6b7280">No sales orders match this period/person. Try All Time, or check whether the order exists in the synced data.</td></tr>';
+  };
+  // Keep canonical order data and financial fields in the existing editor before it opens.
+  var originalCalc=window.calcOrdTotal;
+  window.calcOrdTotal=function(){if(typeof originalCalc==='function')originalCalc.apply(this,arguments);};
+  document.addEventListener('DOMContentLoaded',function(){normalizeAllOrders();});
+  // Also normalize after authentication or a server pull, then repaint using canonical records.
+  var originalRenderAll=window.renderAll;
+  if(typeof originalRenderAll==='function')window.renderAll=function(){normalizeAllOrders();return originalRenderAll.apply(this,arguments);};
+  window.wdpNormalizeOrdersForRecovery=normalizeAllOrders;
+})();
+</script>
+
+
+<script>
+/* WDP order-open reliability patch: use delegated listeners instead of inline JS handlers. */
+(function(){
+  if(window.__wdpOrderClickRecoveryInstalled) return;
+  window.__wdpOrderClickRecoveryInstalled=true;
+  function openFromElement(el){
+    var id=el && (el.getAttribute('data-wdp-open-order') || el.getAttribute('data-wdp-order-id'));
+    if(!id) return;
+    if(typeof window.openOrder!=='function'){ alert('Order editor is unavailable. Please reload the CRM.'); return; }
+    try { window.openOrder(id); }
+    catch(err){ console.error('Unable to open sales order',err); alert('Could not open this order: '+(err&&err.message?err.message:'Unexpected error')); }
+  }
+  document.addEventListener('click',function(ev){
+    var createBtn=ev.target && ev.target.closest ? ev.target.closest('[data-wdp-create-order-lead]') : null;
+    if(createBtn){ ev.preventDefault(); ev.stopPropagation(); var leadId=createBtn.getAttribute('data-wdp-create-order-lead'); if(typeof window.openOrderFromLead==='function'){try{window.openOrderFromLead(leadId);}catch(err){console.error(err);alert('Could not create order: '+(err&&err.message?err.message:'Unexpected error'));}}else{alert('Create Sales Order action is unavailable in this CRM build.');} return; }
+    var btn=ev.target && ev.target.closest ? ev.target.closest('[data-wdp-open-order]') : null;
+    if(btn){ ev.preventDefault(); ev.stopPropagation(); openFromElement(btn); return; }
+    var row=ev.target && ev.target.closest ? ev.target.closest('tr[data-wdp-order-id]') : null;
+    if(row){ openFromElement(row); }
+  },true);
+})();
+</script>
+
+<script>
+/* WDP targeted save/payment reliability patch */
+(function(){
+  function money(v){
+    if(typeof window.wdpParseMoney==='function') return window.wdpParseMoney(v);
+    var n=Number(String(v==null?'':v).replace(/[₹,\s]/g,'').replace(/^rs\.?/i,''));
+    return Number.isFinite(n)?n:0;
+  }
+  function normalizePayment(p){
+    p=p&&typeof p==='object'?p:{};
+    var raw=p.amt;
+    if(raw==null||raw==='')raw=p.amount;
+    if(raw==null||raw==='')raw=p.amountReceived;
+    if(raw==null||raw==='')raw=p.paymentAmount;
+    p.amt=Math.max(0,money(raw));
+    p.type=String(p.type||p.transactionType||p.entryType||'payment').toLowerCase()==='refund'?'refund':'payment';
+    if(p.date && typeof window.v6DateOnly==='function')p.date=window.v6DateOnly(p.date);
+    return p;
+  }
+  function recalc(o){
+    if(!o)return o;
+    var payments=Array.isArray(o.payments)?o.payments:
+      (Array.isArray(o.paymentRecords)?o.paymentRecords:
+      (Array.isArray(o.transactions)?o.transactions:
+      (Array.isArray(o.paymentHistory)?o.paymentHistory:[])));
+    payments=payments.map(normalizePayment);
+    o.payments=payments;
+    var advance=0,regular=0,refunds=0;
+    payments.forEach(function(p){
+      if(!(p.amt>0))return;
+      if(p.type==='refund'){refunds+=p.amt;return;}
+      if(String(p.kind||'').toLowerCase()==='advance'||/\badvance\b/i.test(String(p.ref||p.description||p.paymentType||'')))advance+=p.amt;
+      else regular+=p.amt;
+    });
+    var subtotal=Number(o.subtotal)||0;
+    var grand=(o.grandTotal!=null&&Number.isFinite(Number(o.grandTotal)))?Math.max(0,Number(o.grandTotal)):
+      Math.max(0,subtotal+(Number(o.transport)||0)+(Number(o.install)||0)-(Number(o.discount)||0)-(Number(o.extraDisc)||0)-(Number(o.loss)||0));
+    o.grandTotal=grand;
+    o.advTotal=Math.max(0,advance);
+    o.totalPaymentsReceived=Math.max(0,regular-refunds);
+    o.balance=Math.max(0,grand-advance-regular+refunds);
+    o.payStatus=o.balance<=0?'Fully Paid':(advance+regular-refunds>0?'Partially Paid':'Balance Due');
+    return o;
+  }
+  var oldAddPayment=window.addOrdPayment;
+  if(typeof oldAddPayment==='function'){
+    window.addOrdPayment=function(){
+      var before=Array.isArray(window.ordPmts)?window.ordPmts.length:null;
+      var result=oldAddPayment.apply(this,arguments);
+      // The underlying handler may complete asynchronously if a receipt image was selected.
+      setTimeout(function(){
+        if(Array.isArray(window.ordPmts))window.ordPmts=window.ordPmts.map(normalizePayment);
+        if(typeof window.renderOrdPmts==='function')window.renderOrdPmts();
+      },0);
+      return result;
+    };
+  }
+
+  var oldSaveOrder=window.saveOrder;
+  if(typeof oldSaveOrder==='function'){
+    window.saveOrder=async function(){
+      // If the user typed an amount but didn't press the separate "Add Payment Entry"
+      // button, capture that pending entry before the canonical save payload is built.
+      // This avoids silently saving an order while dropping the amount still in the form.
+      try {
+        if(!Array.isArray(window.ordPmts)) window.ordPmts=[];
+        var paymentInput=document.getElementById('pmtAmt');
+        var pendingAmount=window.wdpParseMoney(paymentInput && paymentInput.value);
+        if(pendingAmount>0){
+          var pendingType=(document.getElementById('pmtType')||{}).value==='refund'?'refund':'payment';
+          var subNow=0,discNow=0;
+          (Array.isArray(window.ordProds)?window.ordProds:[]).forEach(function(p){subNow+=(Number(p.qty)||0)*(Number(p.rate)||0);discNow+=Number(p.disc)||0;});
+          var grandNow=Math.max(0,subNow+Number((document.getElementById('ordTransport')||{}).value||0)+Number((document.getElementById('ordInstall')||{}).value||0)-discNow-Number((document.getElementById('ordExtraDisc')||{}).value||0)-Number((document.getElementById('ordLoss')||{}).value||0));
+          var collectedNow=window.ordPmts.reduce(function(sum,p){var a=window.wdpParseMoney(p&&(p.amt!=null?p.amt:(p.amount!=null?p.amount:p.amountReceived)));return sum+(String(p&&p.type||'payment').toLowerCase()==='refund'?-a:a);},0);
+          if(pendingType==='payment'&&collectedNow+pendingAmount>grandNow+0.005){alert('Payment exceeds the remaining amount due. Reduce the payment or update the order total first.');return;}
+          if(pendingType==='refund'&&pendingAmount>Math.max(0,collectedNow)+0.005){alert('Refund exceeds the amount actually received.');return;}
+          var pDate=(document.getElementById('pmtDate')||{}).value|| (typeof window.tod==='function'?window.tod():'');
+          if(typeof window.validDateString==='function' && !window.validDateString(pDate)){
+            alert('Please enter a valid payment date before saving the order.');
+            return;
+          }
+          window.ordPmts.push({
+            id:typeof window.uid==='function'?window.uid():('pmt-'+Date.now()),
+            date:pDate,
+            amt:pendingAmount,
+            amount:pendingAmount,
+            mode:(document.getElementById('pmtMode')||{}).value||'Cash',
+            ref:((document.getElementById('pmtRef')||{}).value||'').trim(),
+            type:pendingType,
+            kind:'payment',
+            img:null,
+            createdAt:new Date().toISOString(),
+            createdBy:window.curUser||''
+          });
+          paymentInput.value='';
+          var refInput=document.getElementById('pmtRef');if(refInput)refInput.value='';
+          if(typeof window.renderOrdPmts==='function')window.renderOrdPmts();
+        }
+        // Treat a filled advance box the same way: saving the order records it.
+        var advanceInput=document.getElementById('ordAdvanceAmt');
+        var pendingAdvance=window.wdpParseMoney(advanceInput && advanceInput.value);
+        if(pendingAdvance>0){
+          var aDate=(document.getElementById('ordAdvanceDate')||{}).value||(typeof window.tod==='function'?window.tod():'');
+          if(typeof window.validDateString==='function' && !window.validDateString(aDate)){
+            alert('Please enter a valid advance date before saving the order.');
+            return;
+          }
+          window.ordPmts.push({
+            id:typeof window.uid==='function'?window.uid():('adv-'+Date.now()),
+            date:aDate,amt:pendingAdvance,amount:pendingAdvance,
+            mode:(document.getElementById('ordAdvanceMode')||{}).value||'Cash',
+            ref:'Advance payment',type:'payment',kind:'advance',img:null,
+            createdAt:new Date().toISOString(),createdBy:window.curUser||''
+          });
+          advanceInput.value='';
+          if(typeof window.renderOrdPmts==='function')window.renderOrdPmts();
+        }
+        if(Array.isArray(window.ordPmts))window.ordPmts=window.ordPmts.map(normalizePayment);
+      } catch(paymentCaptureError) {
+        console.error('Payment capture before order save failed:',paymentCaptureError);
+        alert('The payment could not be prepared for saving. Nothing was submitted. Please check the amount and try again.');
+        return;
+      }
+      var result=await oldSaveOrder.apply(this,arguments);
+      // Recalculate the visible order after the existing secure save path finishes.
+      var id=window.curOrderId;
+      var list=Array.isArray(window.orders)?window.orders:[];
+      var o=list.find(function(x){return String(x.id)===String(id);});
+      if(o){
+        recalc(o);
+        if(typeof window.v6PersistCache==='function')window.v6PersistCache();
+        if(typeof window.renderOrders==='function')window.renderOrders();
+        if(typeof window.renderMySales==='function')window.renderMySales();
+      }
+      return result;
+    };
+  }
+  // Avoid accidentally saving an edited lead as a new one: preserve the original record identity,
+  // and make the durable sync queue receive the edited record after the standard local save.
+  var oldSaveLead=window.saveLead;
+  if(typeof oldSaveLead==='function'){
+    window.saveLead=async function(){
+      var beforeId=window.editId;
+      var result=await oldSaveLead.apply(this,arguments);
+      try{
+        var client=(document.getElementById('fClient')||{}).value||'';
+        var contact=(document.getElementById('fContact')||{}).value||'';
+        var lead=(Array.isArray(window.leads)?window.leads:[]).find(function(l){
+          return (beforeId&&String(l.id)===String(beforeId)) ||
+            (String(l.contact||'').replace(/\D/g,'')===String(contact).replace(/\D/g,'') && String(l.client||'').trim().toLowerCase()===String(client).trim().toLowerCase());
+        });
+        if(lead){
+          if(typeof window.v6Queue==='function')window.v6Queue('lead','upsert',lead,lead.id,Number(lead.rev)||0,lead);
+          if(typeof window.processSyncQueue==='function')window.processSyncQueue();
+        }
+      }catch(e){console.error('Post-save sync retry:',e);}
+      return result;
+    };
+  }
+})();
+</script>
+
+
+<script>
+/* WDP SYNC GUARANTEE PATCH: do not treat local cache writes as server acknowledgements. */
+(function(){
+  function readQueue(){
+    try{var q=JSON.parse(localStorage.getItem('wdp_v6_outbox')||'[]');return Array.isArray(q)?q:[];}
+    catch(e){return [];}
+  }
+  function writeQueue(q){
+    try{localStorage.setItem('wdp_v6_outbox',JSON.stringify(q));return true;}
+    catch(e){return false;}
+  }
+  function currentUser(){
+    try{var u=JSON.parse(sessionStorage.getItem('wdp_v6_user')||'{}');return String(u.name||'');}
+    catch(e){return '';}
+  }
+  function owns(op){
+    var u=currentUser();return op&&(!op.user||!u||op.user===u);
+  }
+  function match(op,entity,id,leadId){
+    if(!op||op.entity!==entity)return false;
+    if(id&&String(op.id||'')===String(id))return true;
+    if(leadId&&op.record&&String(op.record.leadId||'')===String(leadId))return true;
+    return false;
+  }
+  function wait(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
+  function permanent(op){
+    var code=String(op&&op.lastCode||'').toUpperCase();
+    var msg=String(op&&op.lastError||'');
+    if(/^(FORBIDDEN|BAD_ID|ORDER_DATE_INVALID|ORDER_LEAD_REQUIRED|LEAD_NOT_FOUND|ORDER_EXISTS|ORDER_[A-Z_]+|PAYMENT_[A-Z_]+|REFUND_[A-Z_]+|INVALID_[A-Z_]+)$/.test(code))return true;
+    return /date is invalid|lead id is required|linked lead was not found|you do not own|ownership changed|accountant is read-only|payments received cannot exceed|refunds cannot exceed|order already exists|every order must be linked/i.test(msg);
+  }
+  async function waitForRecordAck(entity,id,leadId,timeoutMs){
+    var deadline=Date.now()+(timeoutMs||30000),primed=false;
+    while(Date.now()<deadline){
+      var q=readQueue(),pending=q.filter(function(op){return owns(op)&&match(op,entity,id,leadId);});
+      if(!pending.length)return true;
+      if(!navigator.onLine)throw new Error('Device is offline. The change remains safely queued and has not been confirmed by the server.');
+      if(!primed){
+        var ids={};pending.forEach(function(op){ids[op.opId]=true;op.nextAttemptAt=0;delete op.lastError;delete op.lastCode;});
+        q.forEach(function(op){if(ids[op.opId]){op.nextAttemptAt=0;delete op.lastError;delete op.lastCode;}});
+        if(!writeQueue(q))throw new Error('Could not update the retry schedule. The saved change remains queued.');
+        primed=true;
+      }
+      pending=readQueue().filter(function(op){return owns(op)&&match(op,entity,id,leadId);});
+      var failed=pending.find(function(op){return op.lastError&&permanent(op);});
+      if(failed)throw new Error('Server rejected this change ('+(failed.lastCode||'VALIDATION_ERROR')+'): '+failed.lastError);
+      if(typeof window.wdpProcessOutbox==='function'){
+        try{await window.wdpProcessOutbox();}catch(e){}
+      }else if(typeof window.processSyncQueue==='function'){
+        try{await window.processSyncQueue();}catch(e){}
+      }else throw new Error('The secure sync engine is unavailable. The change remains queued.');
+      await wait(180);
+    }
+    var remains=readQueue().filter(function(op){return owns(op)&&match(op,entity,id,leadId);});
+    var failed=remains.find(function(op){return op.lastError;});
+    throw new Error('The server did not confirm this '+entity+' within '+Math.round((timeoutMs||30000)/1000)+' seconds.'+
+      (failed?' Last server error ('+(failed.lastCode||'SYNC_ERROR')+'): '+String(failed.lastError).slice(0,220):'')+
+      ' Your edit remains in the sync queue. Keep this session open and retry.');
+  }
+  var priorSaveLead=window.saveLead;
+  if(typeof priorSaveLead==='function'){
+    window.saveLead=async function(){
+      window.__wdpLastSavedLeadId='';
+      try{
+        var result=await priorSaveLead.apply(this,arguments);
+        var id=String(window.__wdpLastSavedLeadId||'');
+        if(!id)return result; // validation stopped the original save
+        await waitForRecordAck('lead',id,'',30000);
+        return result;
+      }catch(e){
+        var pop=document.getElementById('addPop');if(pop)pop.classList.add('show');
+        alert('Lead save is NOT confirmed on the server. The edit has been preserved locally and queued.\\n\\n'+(e&&e.message||'Sync failed'));
+        return;
+      }
+    };
+  }
+  var priorSaveOrder=window.saveOrder;
+  if(typeof priorSaveOrder==='function'){
+    window.saveOrder=async function(){
+      window.__wdpLastSaveLeadId='';window.__wdpLastSaveOrderId='';
+      try{
+        var result=await priorSaveOrder.apply(this,arguments);
+        var leadId=String(window.__wdpLastSaveLeadId||'');
+        var orderId=String(window.__wdpLastSaveOrderId||'');
+        if(!leadId&&!orderId)return result; // validation stopped the original save
+        await waitForRecordAck('order',orderId,leadId,30000);
+        return result;
+      }catch(e){
+        var pop=document.getElementById('orderPop');if(pop)pop.classList.add('show');
+        alert('Sales order save is NOT confirmed on the server. The order/payment edits have been preserved locally and queued.\\n\\n'+(e&&e.message||'Sync failed'));
+        return;
+      }
+    };
+  }
+})();
+</script>
+
 </body>
 </html>
