@@ -257,6 +257,10 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
 @keyframes wdpFuIn{from{opacity:0;transform:translateY(-10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:600px){#wdpFollowupAlertHost{right:10px;top:64px;width:calc(100vw - 20px)}}
 
+
+/* Minimal order-delete icon button: My Sales + Orders only */
+.wdp-order-delete-btn{display:inline-flex!important;align-items:center;justify-content:center;width:30px;min-width:30px;height:30px;padding:0!important;margin-left:4px;font-size:15px;line-height:1;vertical-align:middle;opacity:1!important;visibility:visible!important;}
+#tab-orders #ordTb td:last-child,#tab-mysales #salesTb td:last-child{white-space:nowrap;min-width:120px;}
 </style>
 </head>
 <body>
@@ -474,7 +478,7 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
       </div>
       <div class="sec">
         <div class="sec-hd"><div class="sec-title">📋 Won Deals in Period</div></div>
-        <div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Client</th><th>Salesperson</th><th>Product Sale</th><th>Transport</th><th>Installation</th><th>Disc+Loss ➖</th><th>Net Sales ✅</th><th>Total Sales (Grand Total)</th><th>Advance Payment Received</th><th>Total Payments Received</th><th>Balance Due</th></tr></thead><tbody id="salesTb"></tbody></table></div>
+        <div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Client</th><th>Salesperson</th><th>Product Sale</th><th>Transport</th><th>Installation</th><th>Disc+Loss ➖</th><th>Net Sales ✅</th><th>Total Sales (Grand Total)</th><th>Advance Payment Received</th><th>Total Payments Received</th><th>Balance Due</th><th>Actions</th></tr></thead><tbody id="salesTb"></tbody></table></div>
       </div>
     </div>
 
@@ -736,17 +740,6 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
           <div><div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;margin-bottom:3px">Balance Due</div><div style="font-size:15px;font-weight:800;color:#f87171" id="ordBalance">Rs. 0</div></div>
         </div>
       </div>
-      <!-- ADVANCE PAYMENT QUICK ENTRY: records into the same payment ledger so balance is reduced consistently -->
-      <div style="margin-bottom:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:9px;padding:12px">
-        <div style="font-size:11px;font-weight:800;color:#166534;text-transform:uppercase;margin-bottom:8px">💰 Record Advance Payment</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;align-items:end">
-          <div class="fg"><label>Advance Amount (Rs.) *</label><input type="number" id="ordAdvanceAmt" min="0" step="0.01" placeholder="e.g. 10000"></div>
-          <div class="fg"><label>Payment Mode</label><select id="ordAdvanceMode"><option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Card</option><option>Other</option></select></div>
-          <div class="fg"><label>Payment Date</label><input type="date" id="ordAdvanceDate"></div>
-          <button type="button" class="btn" style="background:#166534;color:#fff;min-height:34px;justify-content:center" onclick="recordOrderAdvance()">+ Add Advance</button>
-        </div>
-        <div style="font-size:11px;color:#166534;margin-top:7px;line-height:1.45">Advance is recorded as a payment entry. It immediately reduces Balance Due and is stored when you click Save Order.</div>
-      </div>
       <!-- PAYMENTS -->
       <div style="margin-bottom:12px">
         <div style="font-size:11px;font-weight:700;color:#0B1425;text-transform:uppercase;margin-bottom:8px">💵 Payment Entries</div>
@@ -760,7 +753,7 @@ tr.fu-row.new-lead-row td{box-shadow:inset 0 2px 0 rgba(217,119,6,.18),inset 0 -
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
             <div class="fg"><label>Amount (Rs.) *</label><input type="number" id="pmtAmt" placeholder="0"></div>
             <div class="fg"><label>Mode</label><select id="pmtMode"><option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Card</option><option>Other</option></select></div>
-            <div class="fg"><label>Type</label><select id="pmtType"><option value="payment">💵 Payment Received</option><option value="refund">↩️ Refund Given</option></select></div>
+            <div class="fg"><label>Type</label><select id="pmtType"><option value="payment">💵 Payment Received</option><option value="advance">🟢 Advance Payment</option><option value="refund">↩️ Refund Given</option></select></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
             <div class="fg"><label>Date</label><input type="date" id="pmtDate"></div>
@@ -1166,6 +1159,31 @@ function migrateLegacyPaymentsToOrders(){
   });
   if(changed){safeSet('wdp_leads',leads);safeSet('wdp_orders',orders);bumpRevision();queueSync();}
 }
+function isOrderLinkedToDeletedLead(order) {
+  if (!order || !Array.isArray(deletedLeads) || !deletedLeads.length) return false;
+
+  // Match by the explicit relationship first. Some older orders use orderId
+  // instead of leadId, and synced tombstones may not carry deletedAt locally.
+  var orderId = String(order.id || order.orderId || '').trim();
+  var orderLeadId = String(order.leadId || order.lead_id || '').trim();
+  var orderPhone = String(order.phone || order.contact || order.contactNumber || order.custPhone || order.customerPhone || '').replace(/\D/g, '');
+  var orderClient = String(order.custName || order.customerName || order.clientName || order.customer || order.client || '').trim().toLocaleLowerCase();
+
+  return deletedLeads.some(function(lead) {
+    if (!lead) return false;
+    var leadId = String(lead.id || lead.leadId || '').trim();
+    var linkedOrderId = String(lead.orderId || lead.order_id || '').trim();
+    if (orderLeadId && leadId && orderLeadId === leadId) return true;
+    if (orderId && linkedOrderId && orderId === linkedOrderId) return true;
+
+    // Legacy records can lack relationship IDs; use exact phone plus exact name
+    // only as a fallback to avoid hiding unrelated customers' orders.
+    var leadPhone = String(lead.contact || lead.phone || lead.contactNumber || lead.mobile || '').replace(/\D/g, '');
+    var leadClient = String(lead.client || lead.customerName || lead.name || '').trim().toLocaleLowerCase();
+    return !!(orderPhone && leadPhone && orderPhone === leadPhone && orderClient && leadClient && orderClient === leadClient);
+  });
+}
+
 function renderMySales() {
   var periodEl = document.getElementById('salesPeriod');
   var spEl = document.getElementById('salesPerson');
@@ -1182,6 +1200,7 @@ function renderMySales() {
   var rows = [];
   // Source 1: Sales Orders
   orders.forEach(function(o){
+    if (isOrderLinkedToDeletedLead(o)) return;
     /* Older CRM builds stored the salesperson under different field names/casing.
        Normalize these before filtering so synced orders are not silently hidden. */
     var orderPerson = String(
@@ -1244,8 +1263,9 @@ function renderMySales() {
       '<td style="color:#C9A84C">'+fmt(r.adv)+'</td>'+
       '<td style="color:#16a34a;font-weight:700">'+fmt(r.received)+'</td>'+
       '<td style="color:#f87171;font-weight:700">'+fmt(r.bal)+'</td>'+
+      '<td onclick="event.stopPropagation()">'+(r.src==='Order'&&r.id?'<button type="button" class="btn bn2 bsm" onclick="openOrder(\''+String(r.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">View / Edit</button> '+'<button type="button" class="btn bdel bsm wdp-order-delete-btn" title="Delete sales order" aria-label="Delete sales order" onclick="deleteSalesOrder(\''+String(r.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">🗑</button>':'—')+'</td>'+
       '</tr>';
-  }).join('') : '<tr><td colspan="13" style="text-align:center;padding:20px;color:#6b7280">No won deals in this period.</td></tr>';
+  }).join('') : '<tr><td colspan="14" style="text-align:center;padding:20px;color:#6b7280">No won deals in this period.</td></tr>';
 }
 
 // ===== RENDER ALL =====
@@ -1994,7 +2014,7 @@ var ordProds = [];
 var ordPmts = [];
 function openOrder(ordId) {
   var o = orders.find(function(x){ return x.id===ordId; });
-  if (!o) return;
+  if (!o || isOrderLinkedToDeletedLead(o)) return;
   if(curRole==='sales'&&String(o.salesperson||'').trim().toLowerCase()!==String(curUser||'').trim().toLowerCase())return;
   curOrderId = o.id;
   curOrderLeadId = o.leadId || null;
@@ -2021,7 +2041,6 @@ function openOrder(ordId) {
   document.getElementById('ordArea').value = o.area||'';
   document.getElementById('ordDispStatus').value = o.dispStatus||'Order Confirmed';
   document.getElementById('pmtDate').value = tod();
-  var advDateEl=document.getElementById('ordAdvanceDate');if(advDateEl)advDateEl.value=tod();var advAmtOpen=document.getElementById('ordAdvanceAmt');if(advAmtOpen)advAmtOpen.value='';
   // Load extra fields
   var tEl = document.getElementById('ordTransport');
   var iEl = document.getElementById('ordInstall');
@@ -2166,39 +2185,22 @@ function renderOrdPmts() {
       '<td>'+fmtDate(p.date)+'</td>'+
       '<td style="font-weight:700;color:'+(isRef?'#dc2626':'#16a34a')+'">'+amtTxt+'</td>'+
       '<td>'+esc(p.mode||'')+'</td>'+
-      '<td style="font-size:11px;color:#6b7280">'+esc(p.ref||'—')+'</td>'+
+      '<td style="font-size:11px;color:#6b7280">'+esc(p.type==='refund'?'Refund Given':(String(p.kind||'').toLowerCase()==='advance'||/\badvance\b/i.test(String(p.ref||p.description||p.paymentType||''))?'Advance Payment':(p.ref||'Payment Received')))+'</td>'+
       '<td>'+imgLink+'</td>'+
       '<td>'+(readonly?'':'<button onclick="ordPmts.splice('+i+',1);renderOrdPmts()" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px">×</button>')+'</td></tr>';
   }).join('');
   calcOrdTotal();
 }
 
-function recordOrderAdvance(){
-  if(isReadOnly())return;
-  var input=document.getElementById('ordAdvanceAmt');
-  var amt=Number(input&&input.value);
-  var date=(document.getElementById('ordAdvanceDate')||{}).value||tod();
-  var mode=(document.getElementById('ordAdvanceMode')||{}).value||'Cash';
-  if(!isFinite(amt)||amt<=0){alert('Enter an advance amount greater than zero.');return;}
-  if(!validDateString(date)){alert('Please enter a valid advance payment date.');return;}
-  var subtotal=0,disc=0;
-  ordProds.forEach(function(p){subtotal+=Number(p.qty||0)*Number(p.rate||0);disc+=Number(p.disc||0);});
-  var grand=subtotal+Number((document.getElementById('ordTransport')||{}).value||0)+Number((document.getElementById('ordInstall')||{}).value||0)-disc-Number((document.getElementById('ordExtraDisc')||{}).value||0)-Number((document.getElementById('ordLoss')||{}).value||0);
-  var received=ordPmts.reduce(function(sum,p){return sum+(p.type==='refund'?-Number(p.amt||0):Number(p.amt||0));},0);
-  if(received+amt>Math.max(0,grand)+0.005){alert('Advance exceeds the remaining balance due. Reduce the advance amount or update the order total first.');return;}
-  ordPmts.push({id:uid(),date:date,amt:amt,mode:mode,ref:'Advance payment',type:'payment',kind:'advance',img:null,createdAt:new Date().toISOString(),createdBy:curUser});
-  renderOrdPmts();
-  input.value='';
-}
 function addOrdPayment(){
   if(isReadOnly())return;
-  var amt=Number(document.getElementById('pmtAmt').value),type=document.getElementById('pmtType').value,date=document.getElementById('pmtDate').value||tod();
+  var amt=Number(document.getElementById('pmtAmt').value),selectedType=document.getElementById('pmtType').value,type=selectedType==='refund'?'refund':'payment',date=document.getElementById('pmtDate').value||tod();
   if(!isFinite(amt)||amt<=0){alert('Payment/refund amount must be greater than zero.');return;}if(!validDateString(date)){alert('Please enter a valid payment date.');return;}
   var subtotal=0,disc=0;ordProds.forEach(function(p){subtotal+=Number(p.qty||0)*Number(p.rate||0);disc+=Number(p.disc||0);});
   var grand=subtotal+Number(document.getElementById('ordTransport').value||0)+Number(document.getElementById('ordInstall').value||0)-disc-Number(document.getElementById('ordExtraDisc').value||0)-Number(document.getElementById('ordLoss').value||0);
   var received=ordPmts.reduce(function(a,p){var raw=p&&p.amt;if(raw==null||raw==='')raw=p&&p.amount;return a+(String(p&&p.type||'payment').toLowerCase()==='refund'?0:Math.max(0,Number(raw)||0));},0),refunded=ordPmts.reduce(function(a,p){var raw=p&&p.amt;if(raw==null||raw==='')raw=p&&p.amount;return a+(String(p&&p.type||'payment').toLowerCase()==='refund'?Math.max(0,Number(raw)||0):0);},0);
   if(type==='payment'&&received+amt>grand+.005){alert('Payment exceeds the remaining amount due.');return;}if(type==='refund'&&refunded+amt>received+.005){alert('Refund exceeds the amount actually received.');return;}
-  var f=document.getElementById('pmtImg').files[0],entry={id:uid(),date:date,amt:amt,mode:document.getElementById('pmtMode').value,ref:document.getElementById('pmtRef').value.trim(),type:type,img:null,createdAt:new Date().toISOString(),createdBy:curUser};
+  var f=document.getElementById('pmtImg').files[0],entry={id:uid(),date:date,amt:amt,mode:document.getElementById('pmtMode').value,ref:document.getElementById('pmtRef').value.trim()||(selectedType==='advance'?'Advance payment':selectedType==='refund'?'Refund given':'Payment received'),type:type,kind:selectedType==='advance'?'advance':(selectedType==='refund'?'refund':'regular'),img:null,createdAt:new Date().toISOString(),createdBy:curUser};
   function finish(){ordPmts.push(entry);renderOrdPmts();document.getElementById('pmtAmt').value='';document.getElementById('pmtRef').value='';document.getElementById('pmtImg').value='';}
   if(f){
     if(f.size>5*1024*1024){alert('Payment screenshot must be 5 MB or smaller.');return;}
@@ -2241,12 +2243,34 @@ function validateOrderBeforeSave(){
 var curOrderLeadId = null;
 
 
+async function deleteSalesOrder(orderId) {
+  if (curRole !== 'founder') { alert('Founder access required to delete a sales order.'); return; }
+  var order = orders.find(function(o) { return String(o.id) === String(orderId); });
+  if (!order) { alert('Sales order not found.'); return; }
+  if (!confirm('Delete sales order ' + (order.id || orderId) + ' for ' + (order.custName || order.customerName || 'this customer') + '? This will remove the order and its payment records from the CRM on all synced devices. This action cannot be undone.')) return;
+  var id = String(order.id), baseRev = Number(order.rev || 0);
+  if (typeof v6Queue !== 'function' || typeof v6ProcessOutbox !== 'function') { alert('Secure sync is unavailable. The order was not deleted.'); return; }
+  // Queue the server delete first; keep the row visible until the server confirms it.
+  v6Queue('order', 'delete', order, id, baseRev, order);
+  try {
+    await v6ProcessOutbox();
+    var pending = v6Outbox().some(function(op){return op.entity==='order'&&op.action==='delete'&&String(op.id)===id;});
+    if (pending) { alert('The delete could not yet be confirmed by the server. The request remains queued for sync; the order has not been removed from this view yet.'); return; }
+    orders = orders.filter(function(o) { return String(o.id) !== id; });
+    if (typeof v6State !== 'undefined' && v6State) { delete v6State.orders[id]; v6PersistCache(); }
+    renderMySales(); renderOrders();
+  } catch (e) {
+    alert('The server could not confirm deletion. The order has been kept; please check your connection and try again.');
+  }
+}
+
 function renderOrders() {
   var filter = document.getElementById('ordFilter') ? document.getElementById('ordFilter').value : 'all';
   var person = document.getElementById('ordPerson') ? document.getElementById('ordPerson').value : '';
   var payF = document.getElementById('ordPayStatus') ? document.getElementById('ordPayStatus').value : '';
   var now = new Date(), t = tod();
   var data = orders.filter(function(o){
+    if (isOrderLinkedToDeletedLead(o)) return false;
     if (curRole === 'sales' && String(o.salesperson||'').trim().toLowerCase() !== String(curUser||'').trim().toLowerCase()) return false;
     if (person && o.salesperson !== person) return false;
     if (payF && o.payStatus !== payF) return false;
@@ -2282,7 +2306,7 @@ function renderOrders() {
       '<td style="color:'+(o.balance>0?'#dc2626':'#16a34a')+';font-weight:700">'+fmt(o.balance)+'</td>'+
       '<td style="background:'+(payColor[o.payStatus]||'#f1f5f9')+';padding:4px 8px;border-radius:6px">'+(payText[o.payStatus]||o.payStatus)+'</td>'+
       '<td style="font-size:11px;color:#6b7280">'+esc(o.dispStatus)+'</td>'+
-      '<td onclick="event.stopPropagation()"><button class="btn bn2 bsm" onclick="openOrder(\''+o.id+'\')">View</button></td>'+
+      '<td onclick="event.stopPropagation()"><button type="button" class="btn bn2 bsm" onclick="openOrder(\''+String(o.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">View / Edit</button> '+(curRole==='founder'?'<button type="button" class="btn bdel bsm wdp-order-delete-btn" title="Delete sales order" aria-label="Delete sales order" onclick="deleteSalesOrder(\''+String(o.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">🗑</button>':'')+'</td>'+
       '</tr>';
   }).join('') : '<tr><td colspan="13" style="text-align:center;padding:24px;color:#6b7280">No orders found.</td></tr>';
   // Also populate ordPerson dropdown
@@ -2500,7 +2524,7 @@ window.addEventListener('online',function(){processSyncQueue();});
         if(r.deletedAt)leads=v6Remove(leads,r.id);
       }
     }else if(c.entity==='order'){
-      if(c.action==='remove')orders=v6Remove(orders,c.id);
+      if(c.action==='remove'||c.action==='delete')orders=v6Remove(orders,c.id);
       else if(c.record){var o=v6Clone(c.record);o.date=v6DateOnly(o.date);if(Array.isArray(o.payments))o.payments.forEach(function(p){p.date=v6DateOnly(p.date);});var oi=orders.findIndex(function(x){return x.id===o.id;});if(oi<0)orders.push(o);else orders[oi]=o;}
     }else if(c.entity==='team'){
       if(c.record)team=v6SanitizeTeam(c.record);
@@ -2679,8 +2703,12 @@ window.addEventListener('online',function(){processSyncQueue();});
             if(d.record.deletedAt&&!deletedLeads.some(function(x){return x.id===d.record.id;}))deletedLeads.push(v6Clone(d.record));
             v6State.leads=v6IndexClone(leads);
           }else if(op.entity==='order'){
-            var oi=orders.findIndex(function(x){return x.id===op.id||x.id===d.record.id;});
-            if(oi>-1)orders[oi]=v6Clone(d.record);else orders.push(v6Clone(d.record));
+            if(op.action==='delete'){
+              orders=v6Remove(orders,op.id);
+            }else{
+              var oi=orders.findIndex(function(x){return x.id===op.id||x.id===d.record.id;});
+              if(oi>-1)orders[oi]=v6Clone(d.record);else orders.push(v6Clone(d.record));
+            }
             v6State.orders=v6IndexClone(orders);
           }else if(op.entity==='products'){
             prods=Array.isArray(d.products)?d.products.slice():(Array.isArray(d.record)?d.record.slice():prods);
@@ -3043,7 +3071,7 @@ window.addEventListener('online',function(){processSyncQueue();});
   window.openOrderFromLead=function(leadId){
     if(isReadOnly())return;curOrderLeadId=leadId;var l=leads.find(function(x){return x.id===leadId;});if(!l)return;
     var existing=orders.find(function(o){return o.leadId===leadId;});if(existing){openOrder(existing.id);return;}
-    curOrderId='TMP-'+v6Uuid();ordProds=[];ordPmts=[];document.getElementById('orderId').textContent='New Order (ID assigned on save)';document.getElementById('orderClient2').textContent=(l.client||'')+' — '+(l.contact||'');document.getElementById('ordCustName').value=l.client||'';document.getElementById('ordPhone').value=l.contact||'';document.getElementById('ordType').value=l.segment||'B2C';document.getElementById('ordSalesperson').value=l.assignedTo||curUser;document.getElementById('ordDate').value=tod();document.getElementById('ordArea').value=l.area||'';document.getElementById('ordDispStatus').value='Order Confirmed';document.getElementById('pmtDate').value=tod();var advDateEl=document.getElementById('ordAdvanceDate');if(advDateEl)advDateEl.value=tod();var advAmtEl=document.getElementById('ordAdvanceAmt');if(advAmtEl)advAmtEl.value='';['ordTransport','ordInstall','ordExtraDisc','ordLoss'].forEach(function(id){var e=document.getElementById(id);if(e)e.value=0;});(l.product||[]).forEach(function(p){ordProds.push({name:p,qty:1,unit:'pcs',rate:0,disc:0});});if(!ordProds.length)ordProds.push({name:'',qty:1,unit:'pcs',rate:0,disc:0});renderOrdProds();renderOrdPmts();renderStatusBar('Order Confirmed');openPop('orderPop');
+    curOrderId='TMP-'+v6Uuid();ordProds=[];ordPmts=[];document.getElementById('orderId').textContent='New Order (ID assigned on save)';document.getElementById('orderClient2').textContent=(l.client||'')+' — '+(l.contact||'');document.getElementById('ordCustName').value=l.client||'';document.getElementById('ordPhone').value=l.contact||'';document.getElementById('ordType').value=l.segment||'B2C';document.getElementById('ordSalesperson').value=l.assignedTo||curUser;document.getElementById('ordDate').value=tod();document.getElementById('ordArea').value=l.area||'';document.getElementById('ordDispStatus').value='Order Confirmed';document.getElementById('pmtDate').value=tod();['ordTransport','ordInstall','ordExtraDisc','ordLoss'].forEach(function(id){var e=document.getElementById(id);if(e)e.value=0;});(l.product||[]).forEach(function(p){ordProds.push({name:p,qty:1,unit:'pcs',rate:0,disc:0});});if(!ordProds.length)ordProds.push({name:'',qty:1,unit:'pcs',rate:0,disc:0});renderOrdProds();renderOrdPmts();renderStatusBar('Order Confirmed');openPop('orderPop');
   };
   window.saveOrder=async function(){
     if(isReadOnly())return;
@@ -3567,6 +3595,13 @@ window.renderFU=function(){
     var detail=failed?' Last server error: '+String(failed.lastError).slice(0,240)+'.':'';
     throw new Error(left.length+' change(s) are still unconfirmed after waiting for the server.'+detail+' Keep this session open and retry after the sync error is corrected.');
   };
+
+  // Narrow bridge used by Founder-only order deletion; keeps the existing secure outbox/API.
+  window.v6Queue = v6Queue;
+  window.v6ProcessOutbox = v6ProcessOutbox;
+  window.v6Outbox = v6Outbox;
+  window.v6State = v6State;
+  window.v6PersistCache = v6PersistCache;
 
 })();
 
@@ -4205,6 +4240,7 @@ window.renderFU=function(){
     else if(period==='3months'){start=new Date(now.getFullYear(),now.getMonth()-2,1);end=new Date(now.getFullYear(),now.getMonth()+1,1);}
     else if(period==='6months'){start=new Date(now.getFullYear(),now.getMonth()-5,1);end=new Date(now.getFullYear(),now.getMonth()+1,1);}
     var rows=(window.orders||[]).filter(function(o){
+      if(o.deletedAt)return false;
       if(person&&!same(o.salesperson,person))return false;
       var d=new Date(dateOnly(o.date)+'T00:00:00');
       if(start&&!isNaN(d.getTime())&&(d<start||d>=end))return false;
@@ -4217,9 +4253,20 @@ window.renderFU=function(){
     var tb=document.getElementById('salesTb');
     if(tb)tb.innerHTML=rows.length?rows.map(function(o,i){
       var id=String(o.id||'');
-      return '<tr class="click-row" data-wdp-order-id="'+escH(id)+'" style="cursor:pointer"><td>'+(i+1)+'</td><td>'+escH(typeof window.fmtDate==='function'?window.fmtDate(o.date):o.date)+'</td><td><strong>'+escH(o.custName)+'</strong></td><td>'+escH(o.salesperson)+'</td><td>'+fmtMoney(o.subtotal)+'</td><td>'+fmtMoney(o.transport)+'</td><td>'+fmtMoney(o.install)+'</td><td>'+fmtMoney(n(o.discount)+n(o.extraDisc)+n(o.loss))+'</td><td style="font-weight:700;color:#16a34a">'+fmtMoney(o.netSale)+'</td><td>'+fmtMoney(o.grandTotal)+'</td><td>'+fmtMoney(o.advTotal)+'</td><td style="font-weight:700;color:#16a34a">'+fmtMoney(o.totalPaymentsReceived)+'</td><td style="font-weight:700;color:'+(o.balance>0?'#dc2626':'#16a34a')+'">'+fmtMoney(o.balance)+' <button type="button" class="btn bn2 bsm" data-wdp-open-order="'+escH(id)+'">View / Edit</button></td></tr>';
+      var actionCell='<td onclick="event.stopPropagation()" style="white-space:nowrap"><button type="button" class="btn bn2 bsm" data-wdp-open-order="'+escH(id)+'">View / Edit</button>'+(curRole==='founder'?' <button type="button" class="btn bdel bsm wdp-order-delete-btn" data-wdp-delete-order="'+escH(id)+'" title="Delete sales order" aria-label="Delete sales order">🗑</button>':'')+'</td>';
+      return '<tr class="click-row" data-wdp-order-id="'+escH(id)+'" style="cursor:pointer"><td>'+(i+1)+'</td><td>'+escH(typeof window.fmtDate==='function'?window.fmtDate(o.date):o.date)+'</td><td><strong>'+escH(o.custName)+'</strong></td><td>'+escH(o.salesperson)+'</td><td>'+fmtMoney(o.subtotal)+'</td><td>'+fmtMoney(o.transport)+'</td><td>'+fmtMoney(o.install)+'</td><td>'+fmtMoney(n(o.discount)+n(o.extraDisc)+n(o.loss))+'</td><td style="font-weight:700;color:#16a34a">'+fmtMoney(o.netSale)+'</td><td>'+fmtMoney(o.grandTotal)+'</td><td>'+fmtMoney(o.advTotal)+'</td><td style="font-weight:700;color:#16a34a">'+fmtMoney(o.totalPaymentsReceived)+'</td><td style="font-weight:700;color:'+(o.balance>0?'#dc2626':'#16a34a')+'">'+fmtMoney(o.balance)+'</td>'+actionCell+'</tr>';
     }).join(''):'<tr><td colspan="13" style="text-align:center;padding:20px;color:#6b7280">No sales orders match this period/person. Try All Time, or check whether the order exists in the synced data.</td></tr>';
   };
+  // Explicit actions are handled separately from row-click navigation.
+  document.addEventListener('click',function(event){
+    var del=event.target&&event.target.closest?event.target.closest('[data-wdp-delete-order]'):null;
+    if(del){event.preventDefault();event.stopPropagation();deleteSalesOrder(del.getAttribute('data-wdp-delete-order'));return;}
+    var open=event.target&&event.target.closest?event.target.closest('[data-wdp-open-order]'):null;
+    if(open){event.preventDefault();event.stopPropagation();openOrder(open.getAttribute('data-wdp-open-order'));return;}
+    var row=event.target&&event.target.closest?event.target.closest('tr[data-wdp-order-id]'):null;
+    if(row&&!event.target.closest('button'))openOrder(row.getAttribute('data-wdp-order-id'));
+  },true);
+
   // Keep canonical order data and financial fields in the existing editor before it opens.
   var originalCalc=window.calcOrdTotal;
   window.calcOrdTotal=function(){if(typeof originalCalc==='function')originalCalc.apply(this,arguments);};
@@ -4271,6 +4318,7 @@ window.renderFU=function(){
     if(raw==null||raw==='')raw=p.paymentAmount;
     p.amt=Math.max(0,money(raw));
     p.type=String(p.type||p.transactionType||p.entryType||'payment').toLowerCase()==='refund'?'refund':'payment';
+    if(p.kind==null && /\badvance\b/i.test(String(p.ref||p.description||p.paymentType||'')))p.kind='advance';
     if(p.date && typeof window.v6DateOnly==='function')p.date=window.v6DateOnly(p.date);
     return p;
   }
@@ -4316,15 +4364,13 @@ window.renderFU=function(){
   var oldSaveOrder=window.saveOrder;
   if(typeof oldSaveOrder==='function'){
     window.saveOrder=async function(){
-      // If the user typed an amount but didn't press the separate "Add Payment Entry"
-      // button, capture that pending entry before the canonical save payload is built.
-      // This avoids silently saving an order while dropping the amount still in the form.
+      // Preserve a pending payment entry if the amount was typed but Add Payment Entry was not clicked.
       try {
         if(!Array.isArray(window.ordPmts)) window.ordPmts=[];
         var paymentInput=document.getElementById('pmtAmt');
         var pendingAmount=window.wdpParseMoney(paymentInput && paymentInput.value);
         if(pendingAmount>0){
-          var pendingType=(document.getElementById('pmtType')||{}).value==='refund'?'refund':'payment';
+          var pendingSelection=(document.getElementById('pmtType')||{}).value||'payment';var pendingType=pendingSelection==='refund'?'refund':'payment';
           var subNow=0,discNow=0;
           (Array.isArray(window.ordProds)?window.ordProds:[]).forEach(function(p){subNow+=(Number(p.qty)||0)*(Number(p.rate)||0);discNow+=Number(p.disc)||0;});
           var grandNow=Math.max(0,subNow+Number((document.getElementById('ordTransport')||{}).value||0)+Number((document.getElementById('ordInstall')||{}).value||0)-discNow-Number((document.getElementById('ordExtraDisc')||{}).value||0)-Number((document.getElementById('ordLoss')||{}).value||0));
@@ -4342,34 +4388,15 @@ window.renderFU=function(){
             amt:pendingAmount,
             amount:pendingAmount,
             mode:(document.getElementById('pmtMode')||{}).value||'Cash',
-            ref:((document.getElementById('pmtRef')||{}).value||'').trim(),
+            ref:((document.getElementById('pmtRef')||{}).value||'').trim()||(pendingSelection==='advance'?'Advance payment':pendingSelection==='refund'?'Refund given':'Payment received'),
             type:pendingType,
-            kind:'payment',
+            kind:pendingSelection==='advance'?'advance':(pendingSelection==='refund'?'refund':'regular'),
             img:null,
             createdAt:new Date().toISOString(),
             createdBy:window.curUser||''
           });
           paymentInput.value='';
           var refInput=document.getElementById('pmtRef');if(refInput)refInput.value='';
-          if(typeof window.renderOrdPmts==='function')window.renderOrdPmts();
-        }
-        // Treat a filled advance box the same way: saving the order records it.
-        var advanceInput=document.getElementById('ordAdvanceAmt');
-        var pendingAdvance=window.wdpParseMoney(advanceInput && advanceInput.value);
-        if(pendingAdvance>0){
-          var aDate=(document.getElementById('ordAdvanceDate')||{}).value||(typeof window.tod==='function'?window.tod():'');
-          if(typeof window.validDateString==='function' && !window.validDateString(aDate)){
-            alert('Please enter a valid advance date before saving the order.');
-            return;
-          }
-          window.ordPmts.push({
-            id:typeof window.uid==='function'?window.uid():('adv-'+Date.now()),
-            date:aDate,amt:pendingAdvance,amount:pendingAdvance,
-            mode:(document.getElementById('ordAdvanceMode')||{}).value||'Cash',
-            ref:'Advance payment',type:'payment',kind:'advance',img:null,
-            createdAt:new Date().toISOString(),createdBy:window.curUser||''
-          });
-          advanceInput.value='';
           if(typeof window.renderOrdPmts==='function')window.renderOrdPmts();
         }
         if(Array.isArray(window.ordPmts))window.ordPmts=window.ordPmts.map(normalizePayment);
@@ -4512,6 +4539,21 @@ window.renderFU=function(){
       }
     };
   }
+})();
+</script>
+
+
+<script>
+/* Prevent accidental payment/amount changes when the user scrolls the page.
+   Mouse-wheel scrolling must never increment/decrement a focused number input. */
+(function () {
+  function stopNumberWheelChange(event) {
+    var target = event.target;
+    if (target && target.matches && target.matches('input[type="number"]')) {
+      event.preventDefault();
+    }
+  }
+  document.addEventListener('wheel', stopNumberWheelChange, { passive: false, capture: true });
 })();
 </script>
 
